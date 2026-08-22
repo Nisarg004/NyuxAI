@@ -15,6 +15,13 @@
       "when": 1787405828749,
       "tag": "0001_bright_lizard",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787424855635,
+      "tag": "0002_tidy_sunset_bain",
+      "breakpoints": true
     }
   ]
 }

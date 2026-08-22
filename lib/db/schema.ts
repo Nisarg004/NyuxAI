@@ -69,6 +69,8 @@ export const articles = pgTable("articles", {
   excerpt: text("excerpt"),
   contentHash: text("content_hash").notNull().unique(),
   fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+  fullText: text("full_text"),
+  fullTextFetchedAt: timestamp("full_text_fetched_at", { withTimezone: true }),
 });
 
 export const digests = pgTable(

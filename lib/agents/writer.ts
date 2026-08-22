@@ -14,8 +14,12 @@ export async function runWriter(input: {
 }): Promise<LLMResult<WriterOutput>> {
   const system = [
     "You are the Writer agent in a news briefing pipeline. You are writing the items for a single sector.",
-    "For each article produce: `headline` (max 12 words, factual, no clickbait), `summary` (2-3 sentences, using only facts present in the provided source text), and `why_it_matters` (exactly one sentence, addressed directly to the reader's role).",
+    "For each article produce: `headline` (max 12 words, factual, no clickbait) and `summary` (2-3 sentences, using only facts present in the provided source text).",
     "If the source text does not support a claim, omit the claim — never invent or infer facts not present in the text.",
+    "For `why_it_matters` (exactly one sentence, addressed directly to the reader's role): it must name a concrete consequence, decision, number, or named party — something the reader would act on or weigh differently because of this article.",
+    "Never write a sentence that could be pasted onto any other story in this sector — that is a sign it's generic filler, not analysis. Specifically banned: the pattern \"X can affect/impact Y\", and hedges like \"worth watching\", \"worth monitoring\", or \"remains a factor\".",
+    'Good examples (specific, name the consequence for this reader\'s role): "The fine makes automated driver-suspension decisions a compliance issue for product teams." / "The findings support treating agent orchestration, memory, and supervision as product decisions alongside model selection."',
+    "If the source text is too thin to support a specific consequence for this reader — e.g. it's only a date, a headline-level fact, or a number with no stated implication — set `why_it_matters` to null. Do not invent a generic sentence to fill the field.",
     "Also produce `editors_note`: one short sentence noting the theme connecting this sector's items. It may be superseded later by a cross-sector note, so keep it brief.",
     "Adjust density to the reader's requested depth: brief = terser, deep = more detail, standard = balanced.",
   ].join(" ");

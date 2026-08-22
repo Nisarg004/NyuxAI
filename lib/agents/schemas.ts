@@ -12,6 +12,9 @@ export const curatorOutputSchema = z.object({
 });
 export type CuratorOutput = z.infer<typeof curatorOutputSchema>;
 
+// Non-null why_it_matters: this is the shape an item must have to ship. Used for the
+// Editor's `approved` list, so structured-output enforcement itself blocks the Editor
+// from approving an item the Writer flagged as having no concrete consequence.
 export const writerItemSchema = z.object({
   article_id: z.string().uuid(),
   sector: z.string(),
@@ -21,8 +24,16 @@ export const writerItemSchema = z.object({
 });
 export type WriterItem = z.infer<typeof writerItemSchema>;
 
+// The Writer's draft shape: why_it_matters may be null, which is the Writer's explicit
+// signal that the source text doesn't support a concrete consequence — the alternative
+// to inventing generic filler. The Editor is responsible for rejecting these.
+export const writerDraftItemSchema = writerItemSchema.extend({
+  why_it_matters: z.string().nullable(),
+});
+export type WriterDraftItem = z.infer<typeof writerDraftItemSchema>;
+
 export const writerOutputSchema = z.object({
-  items: z.array(writerItemSchema),
+  items: z.array(writerDraftItemSchema),
   editors_note: z.string(),
 });
 export type WriterOutput = z.infer<typeof writerOutputSchema>;

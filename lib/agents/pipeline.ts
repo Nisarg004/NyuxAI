@@ -226,14 +226,29 @@ export async function generateDigest(userId: string, opts: { dryRun: boolean }):
     const allRejected = sectorResults.flatMap((r) => r.rejected);
 
     // Rank within each sector by the Curator's original score, highest first.
+    // Keyed lowercase: the Writer/Editor round-trip article_id through two LLM calls,
+    // and a schema-valid UUID can come back in a different case than Postgres stored it.
     const scoreByArticleId = new Map(curatorResult.data.selected.map((s) => [s.article_id, s.score]));
-    const urlByArticleId = new Map(researched.map((r) => [r.articleId, r.url]));
+    const urlByArticleId = new Map(researched.map((r) => [r.articleId.toLowerCase(), r.url]));
 
     const rankedItems: RankedItem[] = sectorResults.flatMap((sectorResult) => {
       const sorted = [...sectorResult.approved].sort(
         (a, b) => (scoreByArticleId.get(b.article_id) ?? 0) - (scoreByArticleId.get(a.article_id) ?? 0)
       );
-      return sorted.map((item, idx) => ({ ...item, source_url: urlByArticleId.get(item.article_id) ?? "", rank: idx + 1 }));
+
+      const resolved: RankedItem[] = [];
+      for (const item of sorted) {
+        const sourceUrl = urlByArticleId.get(item.article_id.toLowerCase());
+        if (!sourceUrl) {
+          // An LLM-echoed article_id that doesn't match any researched article — never ship a
+          // digest item without a resolvable source, so drop it exactly like an Editor rejection.
+          allRejected.push({ article_id: item.article_id, reason: "No matching source URL was found for this article_id after the Writer/Editor pass." });
+          stageLog.push({ stage: "pipeline", event: "warning", at: now(), sector: sectorResult.sector, article_id: item.article_id, message: "Dropped item with unresolvable source_url" });
+          continue;
+        }
+        resolved.push({ ...item, source_url: sourceUrl, rank: 0 });
+      }
+      return resolved.map((item, idx) => ({ ...item, rank: idx + 1 }));
     });
 
     // --- Cross-sector editors note ---

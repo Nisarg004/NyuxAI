@@ -8,20 +8,28 @@ import type { DigestEmailItem, DigestEmailSector } from "@/lib/email/digest-emai
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
-function groupBySector(items: { sector: string; headline: string; summary: string; why_it_matters: string; source_url: string }[]): DigestEmailSector[] {
-  const groups: DigestEmailSector[] = [];
+// Seeds every sector the user is subscribed to, not just the ones with items —
+// a sector that approved nothing still gets an explicit empty entry so the
+// template can say so rather than silently omitting the section.
+function groupBySector(
+  sectors: string[],
+  items: { sector: string; headline: string; summary: string; why_it_matters: string; source_url: string }[]
+): DigestEmailSector[] {
   const bySector = new Map<string, DigestEmailItem[]>();
-
-  for (const item of items) {
-    const bucket = bySector.get(item.sector) ?? [];
-    bucket.push({ headline: item.headline, summary: item.summary, whyItMatters: item.why_it_matters, sourceUrl: item.source_url });
-    if (!bySector.has(item.sector)) {
-      bySector.set(item.sector, bucket);
-      groups.push({ sector: item.sector, items: bucket });
-    }
+  for (const sector of sectors) {
+    bySector.set(sector, []);
   }
 
-  return groups;
+  for (const item of items) {
+    bySector.get(item.sector)?.push({
+      headline: item.headline,
+      summary: item.summary,
+      whyItMatters: item.why_it_matters,
+      sourceUrl: item.source_url,
+    });
+  }
+
+  return sectors.map((sector) => ({ sector, items: bySector.get(sector) ?? [] }));
 }
 
 export async function POST(request: Request) {
@@ -73,7 +81,7 @@ export async function POST(request: Request) {
           timezone: prefs.timezone,
           sectors: prefs.sectors,
           editorsNote: result.editorsNote,
-          sectorGroups: groupBySector(result.items),
+          sectorGroups: groupBySector(prefs.sectors, result.items),
           archiveUrl: `${APP_URL}/archive/${result.digestId}`,
           preferencesUrl: `${APP_URL}/dashboard`,
         });

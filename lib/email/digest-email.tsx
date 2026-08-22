@@ -140,6 +140,20 @@ export function DigestEmail({
                 {group.sector}
               </Text>
 
+              {group.items.length === 0 ? (
+                <Text
+                  style={{
+                    fontFamily: SANS,
+                    fontSize: "14px",
+                    fontStyle: "italic",
+                    color: SLATE,
+                    margin: "0 0 8px 0",
+                  }}
+                >
+                  Nothing in {group.sector} cleared our bar today.
+                </Text>
+              ) : null}
+
               {group.items.map((item, idx) => (
                 <Section key={item.sourceUrl} style={{ margin: "0 0 20px 0" }}>
                   <Link

@@ -11,6 +11,10 @@ export async function runWriter(input: {
   roleTitle: string | null;
   depth: "brief" | "standard" | "deep";
   items: ResearchedItem[];
+  // Set when every item from a prior pass over these same items was rejected —
+  // gives the model the specific reasons so a retry can address them instead of
+  // repeating the same mistake blind.
+  previousRejections?: { article_id: string; reason: string }[];
 }): Promise<LLMResult<WriterOutput>> {
   const system = [
     "You are the Writer agent in a news briefing pipeline. You are writing the items for a single sector.",
@@ -22,6 +26,11 @@ export async function runWriter(input: {
     "If the source text is too thin to support a specific consequence for this reader — e.g. it's only a date, a headline-level fact, or a number with no stated implication — set `why_it_matters` to null. Do not invent a generic sentence to fill the field.",
     "Also produce `editors_note`: one short sentence noting the theme connecting this sector's items. It may be superseded later by a cross-sector note, so keep it brief.",
     "Adjust density to the reader's requested depth: brief = terser, deep = more detail, standard = balanced.",
+    ...(input.previousRejections && input.previousRejections.length > 0
+      ? [
+          "This is a retry: every item from your last pass over these same articles was rejected (see `previous_rejections` in the input, keyed by article_id) — either why_it_matters was null or too generic, or a claim wasn't literally supported by the source text. Re-read each source_text closely for a specific number, deadline, decision, or named party tied to this reader's role, and ground every sentence in exactly what the text says. Only fall back to why_it_matters: null if the source genuinely offers nothing beyond a bare headline-level fact.",
+        ]
+      : []),
   ].join(" ");
 
   const user = JSON.stringify({
@@ -34,6 +43,9 @@ export async function runWriter(input: {
       research_depth: item.depth,
       source_text: item.text,
     })),
+    ...(input.previousRejections && input.previousRejections.length > 0
+      ? { previous_rejections: input.previousRejections }
+      : {}),
   });
 
   return callLLM({

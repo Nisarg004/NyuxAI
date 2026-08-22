@@ -34,23 +34,33 @@ type SectorResult = {
   editorError?: string;
 };
 
+type AttemptResult =
+  | { ok: true; approved: WriterItem[]; rejected: { article_id: string; reason: string }[] }
+  | { ok: false; writerError?: string; editorError?: string };
+
 // Runs Writer -> Editor for one sector's items. Never throws — a failure in this
-// sector must not take down the other sectors running alongside it.
+// sector must not take down the other sectors running alongside it. If the first
+// pass approves nothing, relaxes once by retrying the Writer with the specific
+// rejection reasons before shipping the sector empty — an empty sector should be
+// a genuine dead end, not a first-try fluke.
 async function runSectorPipeline(
   sector: string,
   items: ResearchedItem[],
   log: (entry: StageLogEntry) => void,
   writerInput: { userName: string; roleTitle: string | null; depth: "brief" | "standard" | "deep" }
 ): Promise<SectorResult> {
-  try {
+  const runAttempt = async (
+    attempt: 1 | 2,
+    previousRejections?: { article_id: string; reason: string }[]
+  ): Promise<AttemptResult> => {
     const writerStart = Date.now();
-    log({ stage: "writer", event: "start", at: now(), sector, itemCount: items.length });
+    log({ stage: "writer", event: "start", at: now(), sector, attempt, itemCount: items.length });
 
-    const writerResult = await runWriter({ ...writerInput, items });
+    const writerResult = await runWriter({ ...writerInput, items, previousRejections });
 
     if (writerResult.degraded) {
-      log({ stage: "writer", event: "finish", at: now(), sector, durationMs: Date.now() - writerStart, status: "degraded", error: writerResult.error });
-      return { sector, approved: [], rejected: [], writerError: writerResult.error };
+      log({ stage: "writer", event: "finish", at: now(), sector, attempt, durationMs: Date.now() - writerStart, status: "degraded", error: writerResult.error });
+      return { ok: false, writerError: writerResult.error };
     }
 
     log({
@@ -58,6 +68,7 @@ async function runSectorPipeline(
       event: "finish",
       at: now(),
       sector,
+      attempt,
       durationMs: Date.now() - writerStart,
       status: "ok",
       itemCount: writerResult.data.items.length,
@@ -70,13 +81,13 @@ async function runSectorPipeline(
     }));
 
     const editorStart = Date.now();
-    log({ stage: "editor", event: "start", at: now(), sector, itemCount: editorInputs.length });
+    log({ stage: "editor", event: "start", at: now(), sector, attempt, itemCount: editorInputs.length });
 
     const editorResult = await runEditor(editorInputs);
 
     if (editorResult.degraded) {
-      log({ stage: "editor", event: "finish", at: now(), sector, durationMs: Date.now() - editorStart, status: "degraded", error: editorResult.error });
-      return { sector, approved: [], rejected: [], editorError: editorResult.error };
+      log({ stage: "editor", event: "finish", at: now(), sector, attempt, durationMs: Date.now() - editorStart, status: "degraded", error: editorResult.error });
+      return { ok: false, editorError: editorResult.error };
     }
 
     // Rejections are preserved even though they don't ship — they're a demo asset.
@@ -85,6 +96,7 @@ async function runSectorPipeline(
       event: "finish",
       at: now(),
       sector,
+      attempt,
       durationMs: Date.now() - editorStart,
       status: "ok",
       approvedCount: editorResult.data.approved.length,
@@ -92,7 +104,32 @@ async function runSectorPipeline(
       rejected: editorResult.data.rejected,
     });
 
-    return { sector, approved: editorResult.data.approved, rejected: editorResult.data.rejected };
+    return { ok: true, approved: editorResult.data.approved, rejected: editorResult.data.rejected };
+  };
+
+  try {
+    const first = await runAttempt(1);
+    if (!first.ok) {
+      return { sector, approved: [], rejected: [], writerError: first.writerError, editorError: first.editorError };
+    }
+    if (first.approved.length > 0) {
+      return { sector, approved: first.approved, rejected: first.rejected };
+    }
+
+    log({
+      stage: "pipeline",
+      event: "note",
+      at: now(),
+      sector,
+      message: "Zero items approved on the first pass; retrying the Writer once before shipping this sector empty.",
+    });
+
+    const second = await runAttempt(2, first.rejected);
+    if (!second.ok) {
+      return { sector, approved: [], rejected: first.rejected, writerError: second.writerError, editorError: second.editorError };
+    }
+
+    return { sector, approved: second.approved, rejected: [...first.rejected, ...second.rejected] };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     log({ stage: "sector_pipeline", event: "finish", at: now(), sector, status: "error", error });

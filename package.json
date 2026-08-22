@@ -16,17 +16,21 @@
   "dependencies": {
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
+    "luxon": "^3.7.2",
     "next": "^15.5.23",
     "openai": "^7.5.0",
     "postgres": "^3.4.9",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "react-email": "^6.9.2",
+    "resend": "^6.22.0",
     "rss-parser": "^3.13.0",
     "tsx": "^4.23.12",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/luxon": "^3.7.5",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

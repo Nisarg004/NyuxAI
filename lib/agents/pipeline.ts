@@ -39,21 +39,21 @@ type SectorResult = {
 async function runSectorPipeline(
   sector: string,
   items: ResearchedItem[],
-  stageLog: StageLogEntry[],
+  log: (entry: StageLogEntry) => void,
   writerInput: { userName: string; roleTitle: string | null; depth: "brief" | "standard" | "deep" }
 ): Promise<SectorResult> {
   try {
     const writerStart = Date.now();
-    stageLog.push({ stage: "writer", event: "start", at: now(), sector, itemCount: items.length });
+    log({ stage: "writer", event: "start", at: now(), sector, itemCount: items.length });
 
     const writerResult = await runWriter({ ...writerInput, items });
 
     if (writerResult.degraded) {
-      stageLog.push({ stage: "writer", event: "finish", at: now(), sector, durationMs: Date.now() - writerStart, status: "degraded", error: writerResult.error });
+      log({ stage: "writer", event: "finish", at: now(), sector, durationMs: Date.now() - writerStart, status: "degraded", error: writerResult.error });
       return { sector, approved: [], rejected: [], writerError: writerResult.error };
     }
 
-    stageLog.push({
+    log({
       stage: "writer",
       event: "finish",
       at: now(),
@@ -70,17 +70,17 @@ async function runSectorPipeline(
     }));
 
     const editorStart = Date.now();
-    stageLog.push({ stage: "editor", event: "start", at: now(), sector, itemCount: editorInputs.length });
+    log({ stage: "editor", event: "start", at: now(), sector, itemCount: editorInputs.length });
 
     const editorResult = await runEditor(editorInputs);
 
     if (editorResult.degraded) {
-      stageLog.push({ stage: "editor", event: "finish", at: now(), sector, durationMs: Date.now() - editorStart, status: "degraded", error: editorResult.error });
+      log({ stage: "editor", event: "finish", at: now(), sector, durationMs: Date.now() - editorStart, status: "degraded", error: editorResult.error });
       return { sector, approved: [], rejected: [], editorError: editorResult.error };
     }
 
     // Rejections are preserved even though they don't ship — they're a demo asset.
-    stageLog.push({
+    log({
       stage: "editor",
       event: "finish",
       at: now(),
@@ -95,18 +95,25 @@ async function runSectorPipeline(
     return { sector, approved: editorResult.data.approved, rejected: editorResult.data.rejected };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    stageLog.push({ stage: "sector_pipeline", event: "finish", at: now(), sector, status: "error", error });
+    log({ stage: "sector_pipeline", event: "finish", at: now(), sector, status: "error", error });
     return { sector, approved: [], rejected: [], writerError: error };
   }
 }
 
-export async function generateDigest(userId: string, opts: { dryRun: boolean }): Promise<GenerateDigestResult> {
+export async function generateDigest(
+  userId: string,
+  opts: { dryRun: boolean; onStage?: (entry: StageLogEntry) => void }
+): Promise<GenerateDigestResult> {
   const [{ id: runId }] = await db
     .insert(runs)
     .values({ kind: "digest", userId, status: "running" })
     .returning({ id: runs.id });
 
   const stageLog: StageLogEntry[] = [];
+  const log = (entry: StageLogEntry) => {
+    stageLog.push(entry);
+    opts.onStage?.(entry);
+  };
   const fail = async (error: string) => {
     await db.update(runs).set({ finishedAt: new Date(), status: "failed", stageLog, error }).where(eq(runs.id, runId));
     return { success: false as const, runId, error, stageLog };
@@ -121,7 +128,7 @@ export async function generateDigest(userId: string, opts: { dryRun: boolean }):
 
     // --- Curator ---
     const curatorStart = Date.now();
-    stageLog.push({ stage: "curator", event: "start", at: now(), sectors: prefs.sectors });
+    log({ stage: "curator", event: "start", at: now(), sectors: prefs.sectors });
 
     const candidates = await fetchCandidateArticles(prefs.sectors);
     const curatorResult = await runCurator({
@@ -133,11 +140,11 @@ export async function generateDigest(userId: string, opts: { dryRun: boolean }):
     });
 
     if (curatorResult.degraded) {
-      stageLog.push({ stage: "curator", event: "finish", at: now(), durationMs: Date.now() - curatorStart, status: "degraded", error: curatorResult.error });
+      log({ stage: "curator", event: "finish", at: now(), durationMs: Date.now() - curatorStart, status: "degraded", error: curatorResult.error });
       return fail(`Curator failed: ${curatorResult.error}`);
     }
 
-    stageLog.push({
+    log({
       stage: "curator",
       event: "finish",
       at: now(),
@@ -149,7 +156,7 @@ export async function generateDigest(userId: string, opts: { dryRun: boolean }):
     });
 
     if (curatorResult.data.selected.length === 0) {
-      stageLog.push({ stage: "pipeline", event: "finish", at: now(), note: "Curator selected zero articles; nothing to research or write." });
+      log({ stage: "pipeline", event: "finish", at: now(), note: "Curator selected zero articles; nothing to research or write." });
       await db.update(runs).set({ finishedAt: new Date(), status: "completed", stageLog }).where(eq(runs.id, runId));
       return { success: true, runId, digestId: null, items: [], editorsNote: "", rejected: [], stageLog };
     }
@@ -179,12 +186,12 @@ export async function generateDigest(userId: string, opts: { dryRun: boolean }):
     }));
 
     const researcherStart = Date.now();
-    stageLog.push({ stage: "researcher", event: "start", at: now(), itemCount: researchInputs.length });
+    log({ stage: "researcher", event: "start", at: now(), itemCount: researchInputs.length });
 
     const researched = await runResearcher(researchInputs);
     const deepCount = researched.filter((r) => r.depth === "deep").length;
 
-    stageLog.push({
+    log({
       stage: "researcher",
       event: "finish",
       at: now(),
@@ -204,7 +211,7 @@ export async function generateDigest(userId: string, opts: { dryRun: boolean }):
 
     const sectorResults = await Promise.all(
       [...bySector.entries()].map(([sector, items]) =>
-        runSectorPipeline(sector, items, stageLog, {
+        runSectorPipeline(sector, items, log, {
           userName: user.name,
           roleTitle: user.roleTitle,
           depth: prefs.depth,
@@ -214,7 +221,7 @@ export async function generateDigest(userId: string, opts: { dryRun: boolean }):
 
     const failedSectors = sectorResults.filter((r) => r.writerError || r.editorError);
     if (failedSectors.length > 0) {
-      stageLog.push({
+      log({
         stage: "pipeline",
         event: "note",
         at: now(),
@@ -243,7 +250,7 @@ export async function generateDigest(userId: string, opts: { dryRun: boolean }):
           // An LLM-echoed article_id that doesn't match any researched article — never ship a
           // digest item without a resolvable source, so drop it exactly like an Editor rejection.
           allRejected.push({ article_id: item.article_id, reason: "No matching source URL was found for this article_id after the Writer/Editor pass." });
-          stageLog.push({ stage: "pipeline", event: "warning", at: now(), sector: sectorResult.sector, article_id: item.article_id, message: "Dropped item with unresolvable source_url" });
+          log({ stage: "pipeline", event: "warning", at: now(), sector: sectorResult.sector, article_id: item.article_id, message: "Dropped item with unresolvable source_url" });
           continue;
         }
         resolved.push({ ...item, source_url: sourceUrl, rank: 0 });
@@ -255,15 +262,15 @@ export async function generateDigest(userId: string, opts: { dryRun: boolean }):
     let editorsNote = "";
     if (rankedItems.length > 0) {
       const noteStart = Date.now();
-      stageLog.push({ stage: "editors_note", event: "start", at: now(), itemCount: rankedItems.length });
+      log({ stage: "editors_note", event: "start", at: now(), itemCount: rankedItems.length });
 
       const noteResult = await runCrossSectorNote(rankedItems.map((i) => ({ sector: i.sector, headline: i.headline })));
 
       if (noteResult.degraded) {
-        stageLog.push({ stage: "editors_note", event: "finish", at: now(), durationMs: Date.now() - noteStart, status: "degraded", error: noteResult.error });
+        log({ stage: "editors_note", event: "finish", at: now(), durationMs: Date.now() - noteStart, status: "degraded", error: noteResult.error });
       } else {
         editorsNote = noteResult.data.editors_note;
-        stageLog.push({ stage: "editors_note", event: "finish", at: now(), durationMs: Date.now() - noteStart, status: "ok" });
+        log({ stage: "editors_note", event: "finish", at: now(), durationMs: Date.now() - noteStart, status: "ok" });
       }
     }
 
@@ -298,7 +305,7 @@ export async function generateDigest(userId: string, opts: { dryRun: boolean }):
       }
     }
 
-    stageLog.push({ stage: "pipeline", event: "finish", at: now(), digestId, itemCount: rankedItems.length, dryRun: opts.dryRun });
+    log({ stage: "pipeline", event: "finish", at: now(), digestId, itemCount: rankedItems.length, dryRun: opts.dryRun });
 
     await db.update(runs).set({ finishedAt: new Date(), status: runStatus, stageLog }).where(eq(runs.id, runId));
 

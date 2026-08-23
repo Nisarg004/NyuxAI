@@ -53,3 +53,8 @@ export const editorOutputSchema = z.object({
   ),
 });
 export type EditorOutput = z.infer<typeof editorOutputSchema>;
+
+export const feedbackProfileOutputSchema = z.object({
+  feedback_profile: z.string().min(1),
+});
+export type FeedbackProfileOutput = z.infer<typeof feedbackProfileOutputSchema>;

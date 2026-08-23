@@ -42,6 +42,7 @@ export const preferences = pgTable("preferences", {
   depth: depthEnum("depth").notNull().default("standard"),
   keywords: text("keywords").array().notNull().default([]),
   feedbackProfile: text("feedback_profile"),
+  feedbackProfileUpdatedAt: timestamp("feedback_profile_updated_at", { withTimezone: true }),
   nextRunAt: timestamp("next_run_at", { withTimezone: true }),
   isActive: boolean("is_active").notNull().default(true),
 });

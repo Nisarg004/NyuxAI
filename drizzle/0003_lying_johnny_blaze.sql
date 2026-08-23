@@ -1,0 +1,1 @@
+ALTER TABLE "preferences" ADD COLUMN "feedback_profile_updated_at" timestamp with time zone;

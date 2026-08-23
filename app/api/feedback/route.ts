@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { digestItems, digests, feedback } from "@/lib/db/schema";
 import { getSessionUserId } from "@/lib/session";
+import { countSignalsSinceProfileUpdate, regenerateFeedbackProfile } from "@/lib/agents/feedback-profile";
 
 const VALID_SIGNALS = new Set(["up", "down", "save"]);
 
@@ -38,6 +39,11 @@ export async function POST(request: Request) {
     .insert(feedback)
     .values({ userId, digestItemId, signal: signal as "up" | "down" | "save" })
     .returning({ id: feedback.id });
+
+  const sinceCount = await countSignalsSinceProfileUpdate(userId);
+  if (sinceCount >= 3) {
+    await regenerateFeedbackProfile(userId);
+  }
 
   return Response.json({ success: true, id: row.id });
 }

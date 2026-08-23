@@ -40,7 +40,6 @@ export default function OnboardingPage() {
               id="timezone"
               name="timezone"
               type="text"
-              defaultValue="Asia/Kolkata"
               data-detect-timezone
             />
           </div>

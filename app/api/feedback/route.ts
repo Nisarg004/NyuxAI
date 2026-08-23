@@ -40,9 +40,16 @@ export async function POST(request: Request) {
     .values({ userId, digestItemId, signal: signal as "up" | "down" | "save" })
     .returning({ id: feedback.id });
 
-  const sinceCount = await countSignalsSinceProfileUpdate(userId);
-  if (sinceCount >= 3) {
-    await regenerateFeedbackProfile(userId);
+  try {
+    const sinceCount = await countSignalsSinceProfileUpdate(userId);
+    if (sinceCount >= 3) {
+      await regenerateFeedbackProfile(userId);
+    }
+  } catch (err) {
+    console.error(
+      `[feedback] profile regeneration failed for userId=${userId}, feedbackId=${row.id}:`,
+      err
+    );
   }
 
   return Response.json({ success: true, id: row.id });

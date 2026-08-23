@@ -49,6 +49,9 @@ export async function regenerateFeedbackProfile(
   });
 
   if (!result.ok) {
+    console.error(
+      `[feedback-profile] regeneration degraded for userId=${userId}: ${result.error}`
+    );
     return { updated: false, profile: currentProfile };
   }
 

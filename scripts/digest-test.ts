@@ -1,3 +1,6 @@
+import { eq } from "drizzle-orm";
+import { db } from "../lib/db";
+import { preferences } from "../lib/db/schema";
 import { generateDigest } from "../lib/agents/pipeline";
 
 async function main() {
@@ -6,6 +9,15 @@ async function main() {
     console.error("Usage: npm run digest:test <userId>");
     process.exit(1);
   }
+
+  const [prefs] = await db.select().from(preferences).where(eq(preferences.userId, userId));
+  console.log(
+    `Feedback profile: ${prefs?.feedbackProfile ?? "(none yet)"}`
+  );
+  if (prefs?.feedbackProfileUpdatedAt) {
+    console.log(`  (last updated ${prefs.feedbackProfileUpdatedAt.toISOString()})`);
+  }
+  console.log();
 
   console.log(`Generating digest for user ${userId} (dry run)...\n`);
 

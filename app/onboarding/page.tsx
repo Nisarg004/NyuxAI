@@ -1,5 +1,6 @@
 import { submitOnboarding } from "./actions";
 import { SectorPicker } from "@/components/onboarding/sector-picker";
+import { TimezoneField } from "@/components/onboarding/timezone-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,31 +37,13 @@ export default function OnboardingPage() {
           </div>
           <div>
             <Label htmlFor="timezone">Timezone</Label>
-            <Input
-              id="timezone"
-              name="timezone"
-              type="text"
-              data-detect-timezone
-            />
+            <TimezoneField />
           </div>
         </div>
         <Button type="submit" className="w-full bg-ink text-paper hover:bg-slate">
           Start my briefing
         </Button>
       </form>
-
-      <script
-        dangerouslySetInnerHTML={{
-          __html: `
-            document.addEventListener("DOMContentLoaded", function () {
-              var el = document.querySelector('[data-detect-timezone]');
-              if (el && !el.value) {
-                try { el.value = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (e) {}
-              }
-            });
-          `,
-        }}
-      />
     </main>
   );
 }

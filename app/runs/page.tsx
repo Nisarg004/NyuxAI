@@ -4,7 +4,7 @@ import { Nav } from "@/components/nav";
 import { RunRow } from "@/components/runs/run-row";
 
 export default async function RunsPage() {
-  await requireUser();
+  const { preferences } = await requireUser();
   const runs = await listRuns();
 
   return (
@@ -25,7 +25,7 @@ export default async function RunsPage() {
           </thead>
           <tbody>
             {runs.map((run) => (
-              <RunRow key={run.id} run={run} />
+              <RunRow key={run.id} run={run} timezone={preferences.timezone} />
             ))}
           </tbody>
         </table>

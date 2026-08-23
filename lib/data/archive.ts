@@ -1,7 +1,7 @@
 import { and, eq, asc } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { digestItems, digests, feedback, runs } from "@/lib/db/schema";
-import { extractRejectionsBySector } from "@/lib/rejections";
+import { summarizeStageLog } from "@/lib/stage-log";
 import { SECTORS } from "@/lib/sectors";
 
 export async function getDigestDetail(digestId: string, userId: string) {
@@ -26,7 +26,11 @@ export async function getDigestDetail(digestId: string, userId: string) {
     }
   }
 
-  const rejectionsBySector = extractRejectionsBySector(stageLog);
+  const stageLogSummary = summarizeStageLog(stageLog);
+  const rejectionsBySector: Record<string, { article_id: string; reason: string }[]> = {};
+  for (const [sector, state] of Object.entries(stageLogSummary.editor)) {
+    if (state.rejected.length > 0) rejectionsBySector[sector] = state.rejected;
+  }
 
   const itemsBySector = sectorsAtSend.map((sector) => ({
     sector,

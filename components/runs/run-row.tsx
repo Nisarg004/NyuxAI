@@ -15,7 +15,7 @@ type Run = {
   stageLog: unknown;
 };
 
-export function RunRow({ run }: { run: Run }) {
+export function RunRow({ run, timezone }: { run: Run; timezone: string }) {
   const [open, setOpen] = useState(false);
   const summary = open ? summarizeStageLog(Array.isArray(run.stageLog) ? (run.stageLog as unknown[]) : []) : null;
   const durationMs = run.finishedAt ? run.finishedAt.getTime() - run.startedAt.getTime() : null;
@@ -26,7 +26,7 @@ export function RunRow({ run }: { run: Run }) {
         <td className="px-4 py-2 font-mono text-xs uppercase text-slate">{run.kind}</td>
         <td className="px-4 py-2 text-sm text-ink">{run.userEmail ?? "—"}</td>
         <td className="px-4 py-2 font-mono text-xs text-slate">
-          {DateTime.fromJSDate(run.startedAt).toFormat("d LLL, HH:mm:ss")}
+          {DateTime.fromJSDate(run.startedAt, { zone: timezone }).toFormat("d LLL, HH:mm:ss")}
         </td>
         <td className="px-4 py-2 font-mono text-xs text-slate">{durationMs !== null ? `${(durationMs / 1000).toFixed(1)}s` : "running"}</td>
         <td className="px-4 py-2">

@@ -31,7 +31,7 @@ export default async function DashboardPage() {
           />
           <RecentDigests digests={digests} timezone={preferences.timezone} />
         </div>
-        <SendNowPanel userId={user.id} />
+        <SendNowPanel />
       </main>
     </>
   );

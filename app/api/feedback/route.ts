@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { digestItems, feedback } from "@/lib/db/schema";
+import { digestItems, digests, feedback } from "@/lib/db/schema";
 import { getSessionUserId } from "@/lib/session";
 
 const VALID_SIGNALS = new Set(["up", "down", "save"]);
@@ -25,7 +25,11 @@ export async function POST(request: Request) {
     return Response.json({ success: false, error: "digestItemId and a valid signal are required" }, { status: 400 });
   }
 
-  const [item] = await db.select({ id: digestItems.id }).from(digestItems).where(eq(digestItems.id, digestItemId));
+  const [item] = await db
+    .select({ id: digestItems.id })
+    .from(digestItems)
+    .innerJoin(digests, eq(digestItems.digestId, digests.id))
+    .where(and(eq(digestItems.id, digestItemId), eq(digests.userId, userId)));
   if (!item) {
     return Response.json({ success: false, error: "Unknown digest item" }, { status: 404 });
   }

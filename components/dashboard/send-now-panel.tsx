@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useSendNow } from "@/lib/hooks/use-send-now";
@@ -33,17 +34,21 @@ function SectorRow({ sector, state, kind }: { sector: string; state: SectorAgent
   );
 }
 
-export function SendNowPanel({ userId }: { userId: string }) {
-  const { status, result, start, summary } = useSendNow(userId);
+export function SendNowPanel() {
+  const { status, result, start, summary } = useSendNow();
+  const router = useRouter();
 
   useEffect(() => {
     if (status === "done") {
       toast.success(result?.sent ? "Sent." : (result?.note ?? "Done — nothing to send."));
+      // Refresh server components on the page (e.g. RecentDigests) so a
+      // newly sent digest shows up without a manual reload.
+      router.refresh();
     }
     if (status === "error") {
       toast.error(result?.error ?? "Send failed.");
     }
-  }, [status, result]);
+  }, [status, result, router]);
 
   const writerSectors = Object.keys(summary.writer);
   const editorSectors = Object.keys(summary.editor);

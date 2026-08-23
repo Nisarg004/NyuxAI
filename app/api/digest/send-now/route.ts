@@ -4,6 +4,7 @@ import { digests, preferences, users } from "@/lib/db/schema";
 import { generateDigest } from "@/lib/agents/pipeline";
 import { renderDigestEmail } from "@/lib/email/render";
 import { resend, EMAIL_FROM } from "@/lib/email/client";
+import { getSessionUserId } from "@/lib/session";
 import type { DigestEmailItem, DigestEmailSector } from "@/lib/email/digest-email";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
@@ -32,12 +33,11 @@ function groupBySector(
   return sectors.map((sector) => ({ sector, items: bySector.get(sector) ?? [] }));
 }
 
-export async function POST(request: Request) {
-  const body = await request.json();
-  const userId = typeof body.userId === "string" ? body.userId : null;
+export async function POST() {
+  const userId = await getSessionUserId();
   if (!userId) {
-    return new Response(JSON.stringify({ success: false, error: "userId is required" }), {
-      status: 400,
+    return new Response(JSON.stringify({ success: false, error: "No session" }), {
+      status: 401,
       headers: { "Content-Type": "application/json" },
     });
   }

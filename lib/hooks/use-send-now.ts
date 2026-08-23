@@ -5,7 +5,7 @@ import { summarizeStageLog, type PipelineSummary, type StageEntry } from "@/lib/
 
 type SendNowResult = { sent: boolean; digestId: string | null; error?: string; note?: string; sentTo?: string; subject?: string };
 
-export function useSendNow(userId: string) {
+export function useSendNow() {
   const [entries, setEntries] = useState<StageEntry[]>([]);
   const [status, setStatus] = useState<"idle" | "running" | "done" | "error">("idle");
   const [result, setResult] = useState<SendNowResult | null>(null);
@@ -18,8 +18,6 @@ export function useSendNow(userId: string) {
     try {
       const res = await fetch("/api/digest/send-now", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId }),
       });
 
       if (!res.body) {
@@ -69,7 +67,7 @@ export function useSendNow(userId: string) {
       setStatus("error");
       setResult({ sent: false, digestId: null, error: err instanceof Error ? err.message : String(err) });
     }
-  }, [userId]);
+  }, []);
 
   const summary: PipelineSummary = useMemo(() => summarizeStageLog(entries), [entries]);
 

@@ -11,7 +11,13 @@ export async function POST(request: Request) {
     return Response.json({ success: false, error: "No session" }, { status: 401 });
   }
 
-  const body = await request.json();
+  let body;
+  try {
+    body = await request.json();
+  } catch (error) {
+    return Response.json({ success: false, error: "Invalid JSON" }, { status: 400 });
+  }
+
   const digestItemId = typeof body.digestItemId === "string" ? body.digestItemId : null;
   const signal = typeof body.signal === "string" ? body.signal : null;
 

@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, asc } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { digestItems, digests, feedback, runs } from "@/lib/db/schema";
 import { extractRejectionsBySector } from "@/lib/rejections";
@@ -34,7 +34,7 @@ export async function getDigestDetail(digestId: string, userId: string) {
   }));
 
   const feedbackRows = items.length
-    ? await db.select().from(feedback).where(eq(feedback.userId, userId))
+    ? await db.select().from(feedback).where(eq(feedback.userId, userId)).orderBy(asc(feedback.createdAt))
     : [];
   const itemIds = new Set(items.map((i) => i.id));
   const existingFeedback: Record<string, "up" | "down" | "save"> = {};

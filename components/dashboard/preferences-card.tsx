@@ -98,7 +98,10 @@ export function PreferencesCard(props: {
         <Button type="submit" disabled={sectors.length === 0} className="bg-ink text-paper hover:bg-slate">
           Save
         </Button>
-        <Button type="button" variant="outline" onClick={() => setEditing(false)}>
+        <Button type="button" variant="outline" onClick={() => {
+          setSectors(props.sectors);
+          setEditing(false);
+        }}>
           Cancel
         </Button>
       </div>

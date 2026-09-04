@@ -24,23 +24,34 @@ export function FeedbackButtons({ digestItemId, initial }: { digestItemId: strin
     }
   };
 
+  const base =
+    "rounded-[3px] border px-2.5 py-1 text-sm transition-colors disabled:opacity-50";
+
   return (
     <div className="flex gap-2">
       <button
         onClick={() => send("up")}
         disabled={pending}
         aria-pressed={signal === "up"}
-        className={`rounded-sm border px-2 py-1 text-xs ${signal === "up" ? "border-confirm bg-confirm/10 text-confirm" : "border-border text-slate hover:border-ink"}`}
+        className={`${base} ${
+          signal === "up"
+            ? "border-editor bg-editor text-paper"
+            : "border-rule text-ink-soft hover:border-ink hover:text-ink"
+        }`}
       >
-        ↑ Useful
+        Useful
       </button>
       <button
         onClick={() => send("down")}
         disabled={pending}
         aria-pressed={signal === "down"}
-        className={`rounded-sm border px-2 py-1 text-xs ${signal === "down" ? "border-ink bg-ink/5 text-ink" : "border-border text-slate hover:border-ink"}`}
+        className={`${base} ${
+          signal === "down"
+            ? "border-ink bg-ink text-paper"
+            : "border-rule text-ink-soft hover:border-ink hover:text-ink"
+        }`}
       >
-        ↓ Not for me
+        Not for me
       </button>
     </div>
   );

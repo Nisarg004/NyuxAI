@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SECTORS } from "@/lib/sectors";
+import { formatSectorList } from "@/lib/countdown";
 import { updatePreferences } from "@/app/dashboard/actions";
 
 export function PreferencesCard(props: {
@@ -25,36 +26,21 @@ export function PreferencesCard(props: {
 
   if (!editing) {
     return (
-      <div className="rounded-md border border-border bg-white p-5">
-        <div className="flex items-center justify-between">
-          <h2 className="font-display text-lg text-ink">Your preferences</h2>
-          <button onClick={() => setEditing(true)} className="text-xs text-slate underline decoration-dotted hover:text-ink">
+      <section>
+        <div className="flex items-baseline justify-between">
+          <h2 className="font-display text-sm italic text-ink-soft">Standing instructions</h2>
+          <button
+            onClick={() => setEditing(true)}
+            className="text-sm text-editor underline decoration-editor/40 underline-offset-4 hover:decoration-editor"
+          >
             Edit
           </button>
         </div>
-        <dl className="mt-3 space-y-2 text-sm">
-          <div className="flex justify-between">
-            <dt className="text-slate">Sectors</dt>
-            <dd className="flex flex-wrap justify-end gap-1.5">
-              {SECTORS.filter((s) => props.sectors.includes(s)).map((s) => (
-                <span key={s} className="rounded-sm border border-ink/20 px-1.5 py-0.5 font-mono text-[10px] uppercase text-ink">
-                  {s}
-                </span>
-              ))}
-            </dd>
-          </div>
-          <div className="flex justify-between">
-            <dt className="text-slate">Delivery time</dt>
-            <dd className="font-mono text-ink">
-              {currentTime} ({props.timezone})
-            </dd>
-          </div>
-          <div className="flex justify-between">
-            <dt className="text-slate">Depth</dt>
-            <dd className="font-mono capitalize text-ink">{props.depth}</dd>
-          </div>
-        </dl>
-      </div>
+        <p className="mt-2 text-[1.0625rem] leading-[1.7] text-ink">
+          {formatSectorList(SECTORS.filter((s) => props.sectors.includes(s)))} desks, at{" "}
+          {currentTime} your time. <span className="capitalize">{props.depth}</span> depth.
+        </p>
+      </section>
     );
   }
 
@@ -64,17 +50,20 @@ export function PreferencesCard(props: {
         await updatePreferences(formData);
         setEditing(false);
       }}
-      className="rounded-md border border-amber bg-white p-5"
+      className="border-l-2 border-editor pl-4"
     >
-      <h2 className="font-display text-lg text-ink">Edit preferences</h2>
+      <h2 className="font-display text-sm italic text-ink-soft">Editing standing instructions</h2>
       <div className="mt-3 flex flex-wrap gap-2">
         {SECTORS.map((sector) => (
           <button
             key={sector}
             type="button"
             onClick={() => toggleSector(sector)}
-            className={`rounded-sm border px-2 py-1 font-mono text-[10px] uppercase tracking-wide ${
-              sectors.includes(sector) ? "border-amber bg-ink text-amber" : "border-ink/20 text-ink hover:border-ink"
+            aria-pressed={sectors.includes(sector)}
+            className={`rounded-[3px] border px-2.5 py-1 text-sm transition-colors ${
+              sectors.includes(sector)
+                ? "border-ink bg-ink text-paper"
+                : "border-rule text-ink-soft hover:border-ink hover:text-ink"
             }`}
           >
             {sector}
@@ -84,24 +73,33 @@ export function PreferencesCard(props: {
       {sectors.map((s) => (
         <input key={s} type="hidden" name="sectors" value={s} />
       ))}
-      <div className="mt-3 grid grid-cols-2 gap-3">
-        <div>
-          <Label htmlFor="pref-time">Delivery time</Label>
-          <Input id="pref-time" name="time" type="time" defaultValue={currentTime} required />
+      <div className="mt-4 grid max-w-md grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="pref-time" className="text-ink-soft">Delivery time</Label>
+          <Input id="pref-time" name="time" type="time" defaultValue={currentTime} required className="rounded-[3px]" />
         </div>
-        <div>
-          <Label htmlFor="pref-timezone">Timezone</Label>
-          <Input id="pref-timezone" name="timezone" type="text" defaultValue={props.timezone} required />
+        <div className="space-y-1.5">
+          <Label htmlFor="pref-timezone" className="text-ink-soft">Timezone</Label>
+          <Input id="pref-timezone" name="timezone" type="text" defaultValue={props.timezone} required className="rounded-[3px]" />
         </div>
       </div>
       <div className="mt-4 flex gap-2">
-        <Button type="submit" disabled={sectors.length === 0} className="bg-ink text-paper hover:bg-slate">
+        <Button
+          type="submit"
+          disabled={sectors.length === 0}
+          className="rounded-[3px] bg-ink px-4 text-paper hover:bg-editor"
+        >
           Save
         </Button>
-        <Button type="button" variant="outline" onClick={() => {
-          setSectors(props.sectors);
-          setEditing(false);
-        }}>
+        <Button
+          type="button"
+          variant="ghost"
+          className="rounded-[3px] text-ink-soft hover:text-ink"
+          onClick={() => {
+            setSectors(props.sectors);
+            setEditing(false);
+          }}
+        >
           Cancel
         </Button>
       </div>

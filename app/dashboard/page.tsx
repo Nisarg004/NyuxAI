@@ -13,25 +13,35 @@ export default async function DashboardPage() {
   return (
     <>
       <Nav current="dashboard" />
-      <main className="mx-auto w-full max-w-5xl flex-1 space-y-6 px-6 py-8">
-        <CountdownHero
-          sectors={preferences.sectors}
-          deliveryHour={preferences.deliveryHour}
-          deliveryMinute={preferences.deliveryMinute}
-          timezone={preferences.timezone}
-          nextRunAt={preferences.nextRunAt ? preferences.nextRunAt.toISOString() : null}
-        />
-        <div className="grid gap-6 sm:grid-cols-2">
-          <PreferencesCard
-            sectors={preferences.sectors}
-            deliveryHour={preferences.deliveryHour}
-            deliveryMinute={preferences.deliveryMinute}
-            timezone={preferences.timezone}
-            depth={preferences.depth}
-          />
-          <RecentDigests digests={digests} timezone={preferences.timezone} />
+      <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-10">
+        <p className="font-display text-sm italic text-ink-soft">{user.name}&rsquo;s desk</p>
+
+        <div className="mt-8 divide-y divide-rule">
+          <div className="pb-8">
+            <CountdownHero
+              sectors={preferences.sectors}
+              deliveryHour={preferences.deliveryHour}
+              deliveryMinute={preferences.deliveryMinute}
+              timezone={preferences.timezone}
+              nextRunAt={preferences.nextRunAt ? preferences.nextRunAt.toISOString() : null}
+            />
+          </div>
+          <div className="py-8">
+            <PreferencesCard
+              sectors={preferences.sectors}
+              deliveryHour={preferences.deliveryHour}
+              deliveryMinute={preferences.deliveryMinute}
+              timezone={preferences.timezone}
+              depth={preferences.depth}
+            />
+          </div>
+          <div className="py-8">
+            <RecentDigests digests={digests} timezone={preferences.timezone} />
+          </div>
+          <div className="pt-8">
+            <SendNowPanel />
+          </div>
         </div>
-        <SendNowPanel />
       </main>
     </>
   );

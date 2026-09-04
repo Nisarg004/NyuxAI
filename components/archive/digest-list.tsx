@@ -9,23 +9,34 @@ export function DigestList({
   timezone: string;
 }) {
   if (digests.length === 0) {
-    return <p className="text-sm text-slate">No briefs yet — send one from the dashboard to see it here.</p>;
+    return (
+      <p className="mt-6 text-[1.0625rem] leading-[1.7] text-ink-soft">
+        No editions yet. Send one from your desk to see it here.
+      </p>
+    );
   }
 
   return (
-    <ul className="divide-y divide-border/60 rounded-md border border-border bg-white">
-      {digests.map((d) => (
-        <li key={d.id}>
-          <Link href={`/archive/${d.id}`} className="flex items-center justify-between px-5 py-4 hover:bg-paper">
-            <span className="text-sm font-medium text-ink">
-              {d.subject ?? DateTime.fromJSDate(d.scheduledFor, { zone: timezone }).toFormat("ccc d LLL yyyy")}
-            </span>
-            <span className="font-mono text-xs uppercase text-slate">
-              {d.sentAt ? DateTime.fromJSDate(d.sentAt, { zone: timezone }).toFormat("d LLL, HH:mm") : d.status}
-            </span>
-          </Link>
-        </li>
-      ))}
+    <ul className="mt-2">
+      {digests.map((d) => {
+        const date = DateTime.fromJSDate(d.scheduledFor, { zone: timezone });
+        return (
+          <li key={d.id} className="border-b border-rule last:border-0">
+            <Link href={`/archive/${d.id}`} className="group flex items-baseline justify-between gap-4 py-3">
+              <span className="font-display text-[1.0625rem] text-ink group-hover:text-editor">
+                {date.toFormat("cccc d LLLL yyyy")}
+              </span>
+              <span className="shrink-0 text-sm text-ink-soft">
+                {d.sentAt
+                  ? `Sent ${DateTime.fromJSDate(d.sentAt, { zone: timezone }).toFormat("HH:mm")}`
+                  : d.status === "ready"
+                    ? "Ready"
+                    : d.status}
+              </span>
+            </Link>
+          </li>
+        );
+      })}
     </ul>
   );
 }

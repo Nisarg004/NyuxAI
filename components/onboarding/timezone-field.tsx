@@ -23,6 +23,7 @@ export function TimezoneField() {
       value={value}
       onChange={(e) => setValue(e.target.value)}
       required
+      className="rounded-[3px]"
     />
   );
 }

@@ -25,38 +25,50 @@ export function SectorSection({
   const [showRejected, setShowRejected] = useState(false);
 
   return (
-    <section className="border-b border-border/60 py-6 last:border-0">
-      <h3 className="border-b-2 border-amber pb-1.5 font-mono text-xs uppercase tracking-wide text-ink">{sector}</h3>
+    <section className="border-b border-rule py-9 last:border-0">
+      <h2 className="font-display text-lg italic text-editor">{sector}</h2>
 
       {items.length === 0 ? (
-        <p className="mt-3 text-sm italic text-slate">Nothing in {sector} cleared our bar today.</p>
+        <p className="mt-4 text-[1.0625rem] leading-[1.7] text-ink-soft">
+          Nothing in {sector} cleared the bar today.
+        </p>
       ) : (
-        <ul className="mt-3 space-y-5">
+        <div className="mt-5 space-y-9">
           {items.map((item) => (
-            <li key={item.id}>
-              <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="font-display text-base font-semibold text-ink hover:text-amber">
-                {item.headline}
-              </a>
-              <p className="mt-1.5 text-sm text-slate">{item.summary}</p>
-              <div className="mt-2 border-l-2 border-amber bg-amber/10 px-3 py-2">
-                <p className="font-mono text-[10px] uppercase tracking-wide text-amber">Why it matters</p>
-                <p className="mt-0.5 text-sm text-ink">{item.whyItMatters}</p>
-              </div>
-              <div className="mt-2">
+            <article key={item.id}>
+              <h3 className="font-display text-[1.4rem] font-semibold leading-[1.2] tracking-[-0.01em] text-ink">
+                <a
+                  href={item.sourceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="decoration-editor/40 underline-offset-4 hover:text-editor hover:underline"
+                >
+                  {item.headline}
+                </a>
+              </h3>
+              <p className="mt-2.5 text-[1.0625rem] leading-[1.7] text-ink/90">{item.summary}</p>
+              <p className="mt-4 border-l border-editor py-0.5 pl-4 text-[0.95rem] leading-[1.65] text-ink-soft">
+                <span className="font-display italic text-ink">Why it matters — </span>
+                {item.whyItMatters}
+              </p>
+              <div className="mt-3">
                 <FeedbackButtons digestItemId={item.id} initial={existingFeedback[item.id] ?? null} />
               </div>
-            </li>
+            </article>
           ))}
-        </ul>
+        </div>
       )}
 
       {rejected.length > 0 ? (
-        <div className="mt-3">
-          <button onClick={() => setShowRejected((v) => !v)} className="text-xs text-slate underline decoration-dotted hover:text-ink">
+        <div className="mt-6">
+          <button
+            onClick={() => setShowRejected((v) => !v)}
+            className="text-sm italic text-ink-soft underline decoration-rule underline-offset-4 hover:text-ink"
+          >
             {rejected.length} item{rejected.length === 1 ? "" : "s"} dropped — couldn&rsquo;t verify against source
           </button>
           {showRejected ? (
-            <ul className="mt-2 space-y-1 pl-3 text-xs text-slate">
+            <ul className="mt-2 space-y-1 border-l border-rule pl-4 text-[0.9rem] leading-[1.55] text-ink-soft">
               {rejected.map((r, i) => (
                 <li key={i}>{r.reason}</li>
               ))}

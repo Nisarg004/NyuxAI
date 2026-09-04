@@ -7,30 +7,24 @@ import { Button } from "@/components/ui/button";
 import { useSendNow } from "@/lib/hooks/use-send-now";
 import type { SectorAgentState } from "@/lib/stage-log";
 
-function StatusDot({ status }: { status: "pending" | "running" | "done" | "error" }) {
-  const color =
-    status === "done" ? "bg-confirm" : status === "error" ? "bg-destructive" : status === "running" ? "bg-amber animate-pulse" : "bg-slate/30";
-  return <span className={`inline-block h-2 w-2 rounded-full ${color}`} />;
+function Marker({ status }: { status: "pending" | "running" | "done" | "error" }) {
+  const cls =
+    status === "done"
+      ? "bg-confirm"
+      : status === "error"
+        ? "bg-editor"
+        : status === "running"
+          ? "bg-editor animate-pulse"
+          : "border border-rule bg-transparent";
+  return <span className={`mt-2 inline-block size-1.5 shrink-0 rounded-full ${cls}`} aria-hidden />;
 }
 
-function SectorRow({ sector, state, kind }: { sector: string; state: SectorAgentState; kind: "writer" | "editor" }) {
+function DeskLine({ marker, children }: { marker: SectorAgentState["status"] | "pending"; children: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between border-b border-border/60 py-1.5 text-sm last:border-0">
-      <span className="flex items-center gap-2">
-        <StatusDot status={state.status} />
-        <span className="font-mono text-xs uppercase text-slate">{sector}</span>
-        {state.attempt === 2 ? (
-          <span className="rounded-sm bg-amber/20 px-1.5 py-0.5 font-mono text-[10px] uppercase text-amber">attempt: 2</span>
-        ) : null}
-      </span>
-      <span className="font-mono text-xs text-ink">
-        {kind === "editor"
-          ? `${state.approvedCount ?? "—"} approved · ${state.rejectedCount ?? "—"} rejected`
-          : state.itemCount !== undefined
-            ? `${state.itemCount} drafted`
-            : "—"}
-      </span>
-    </div>
+    <li className="flex gap-2.5 text-[0.95rem] leading-[1.6] text-ink">
+      <Marker status={marker} />
+      <span>{children}</span>
+    </li>
   );
 }
 
@@ -40,13 +34,11 @@ export function SendNowPanel() {
 
   useEffect(() => {
     if (status === "done") {
-      toast.success(result?.sent ? "Sent." : (result?.note ?? "Done — nothing to send."));
-      // Refresh server components on the page (e.g. RecentDigests) so a
-      // newly sent digest shows up without a manual reload.
+      toast.success(result?.sent ? "Edition sent." : (result?.note ?? "Done — nothing to send."));
       router.refresh();
     }
     if (status === "error") {
-      toast.error(result?.error ?? "Send failed.");
+      toast.error(result?.error ?? "The run failed.");
     }
   }, [status, result, router]);
 
@@ -54,77 +46,71 @@ export function SendNowPanel() {
   const editorSectors = Object.keys(summary.editor);
 
   return (
-    <div className="rounded-md border border-border bg-white p-5">
-      <div className="flex items-center justify-between">
-        <h2 className="font-display text-lg text-ink">Send now</h2>
-        <Button onClick={start} disabled={status === "running"} className="bg-ink text-paper hover:bg-slate">
-          {status === "running" ? "Sending…" : "Send now"}
+    <section>
+      <div className="flex items-baseline justify-between">
+        <h2 className="font-display text-sm italic text-ink-soft">An edition now, off schedule</h2>
+        <Button
+          onClick={start}
+          disabled={status === "running"}
+          className="rounded-[3px] bg-ink px-4 text-paper hover:bg-editor"
+        >
+          {status === "running" ? "Going to press…" : "Send now"}
         </Button>
       </div>
 
       {status !== "idle" ? (
-        <div className="mt-5 space-y-4">
-          <div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="flex items-center gap-2">
-                <StatusDot status={summary.curator.status} />
-                <span className="font-mono text-xs uppercase text-slate">Curator</span>
-              </span>
-              <span className="font-mono text-xs text-ink">{summary.totals.selected || "—"} selected</span>
-            </div>
-            {summary.curator.selections.length > 0 ? (
-              <ul className="mt-1 space-y-0.5 pl-4 text-xs text-slate">
-                {summary.curator.selections.slice(0, 6).map((s) => (
-                  <li key={s.article_id}>
-                    <span className="font-mono uppercase text-amber">{s.sector}</span> · {s.reason}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </div>
+        <ul className="mt-4 space-y-2">
+          <DeskLine marker={summary.curator.status}>
+            The curator {summary.curator.status === "done" ? "chose" : "is choosing"}{" "}
+            {summary.totals.selected || "—"} {summary.totals.selected === 1 ? "story" : "stories"}.
+          </DeskLine>
+          {summary.curator.selections.slice(0, 5).map((s) => (
+            <li key={s.article_id} className="ml-4 pl-2.5 text-[0.9rem] leading-[1.55] text-ink-soft">
+              <span className="font-display italic text-ink">{s.sector}</span> — {s.reason}
+            </li>
+          ))}
 
-          <div className="flex items-center justify-between text-sm">
-            <span className="flex items-center gap-2">
-              <StatusDot status={summary.researcher.status} />
-              <span className="font-mono text-xs uppercase text-slate">Researcher</span>
-            </span>
-            <span className="font-mono text-xs text-ink">
-              {summary.totals.fetched || "—"} fetched
-              {summary.researcher.deep !== undefined ? ` · ${summary.researcher.deep} deep · ${summary.researcher.shallow} shallow` : ""}
-            </span>
-          </div>
+          <DeskLine marker={summary.researcher.status}>
+            The researcher {summary.researcher.status === "done" ? "verified" : "is verifying"}{" "}
+            {summary.totals.fetched || "—"} against source
+            {summary.researcher.deep !== undefined
+              ? `, ${summary.researcher.deep} in depth and ${summary.researcher.shallow} in brief`
+              : ""}
+            .
+          </DeskLine>
 
-          {writerSectors.length > 0 ? (
-            <div>
-              <span className="font-mono text-xs uppercase text-slate">Writer</span>
-              <div className="mt-1">
-                {writerSectors.map((sector) => (
-                  <SectorRow key={sector} sector={sector} state={summary.writer[sector]} kind="writer" />
-                ))}
-              </div>
-            </div>
-          ) : null}
+          {writerSectors.map((sector) => {
+            const w = summary.writer[sector];
+            return (
+              <DeskLine key={sector} marker={w.status}>
+                The {sector} writer {w.status === "done" ? "drafted" : "is drafting"}{" "}
+                {w.itemCount ?? "—"} {w.itemCount === 1 ? "item" : "items"}
+                {w.attempt === 2 ? " on a second pass" : ""}.
+              </DeskLine>
+            );
+          })}
 
-          {editorSectors.length > 0 ? (
-            <div>
-              <span className="font-mono text-xs uppercase text-slate">Editor</span>
-              <div className="mt-1">
-                {editorSectors.map((sector) => (
-                  <SectorRow key={sector} sector={sector} state={summary.editor[sector]} kind="editor" />
-                ))}
-              </div>
-            </div>
-          ) : null}
+          {editorSectors.map((sector) => {
+            const e = summary.editor[sector];
+            return (
+              <DeskLine key={sector} marker={e.status}>
+                The {sector} editor {e.status === "done" ? "kept" : "is weighing"} {e.approvedCount ?? "—"}
+                {e.status === "done" ? `, cut ${e.rejectedCount ?? 0}` : ""}.
+              </DeskLine>
+            );
+          })}
 
           {summary.notes.length > 0 ? (
-            <ul className="space-y-0.5 border-t border-border/60 pt-2 text-xs italic text-slate">
-              {summary.notes.map((note, i) => (
-                <li key={i}>{note}</li>
-              ))}
-            </ul>
+            <li className="mt-1 border-t border-rule pt-2">
+              <ul className="space-y-0.5 text-[0.9rem] italic leading-[1.55] text-ink-soft">
+                {summary.notes.map((note, i) => (
+                  <li key={i}>{note}</li>
+                ))}
+              </ul>
+            </li>
           ) : null}
-        </div>
+        </ul>
       ) : null}
-    </div>
+    </section>
   );
 }

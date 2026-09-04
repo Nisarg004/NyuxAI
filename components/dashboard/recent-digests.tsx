@@ -9,22 +9,38 @@ export function RecentDigests({
   timezone: string;
 }) {
   return (
-    <div className="rounded-md border border-border bg-white p-5">
-      <h2 className="font-display text-lg text-ink">Recent digests</h2>
+    <section>
+      <h2 className="font-display text-sm italic text-ink-soft">Recent editions</h2>
       {digests.length === 0 ? (
-        <p className="mt-3 text-sm text-slate">Nothing sent yet — hit Send now to generate your first brief.</p>
+        <p className="mt-2 text-[0.95rem] text-ink-soft">
+          Nothing sent yet. Send one now to see your first edition.
+        </p>
       ) : (
-        <ul className="mt-3 divide-y divide-border/60">
-          {digests.map((d) => (
-            <li key={d.id} className="flex items-center justify-between py-2 text-sm">
-              <Link href={`/archive/${d.id}`} className="text-ink hover:text-amber">
-                {d.subject ?? DateTime.fromJSDate(d.scheduledFor, { zone: timezone }).toFormat("ccc d LLL, HH:mm")}
-              </Link>
-              <span className="font-mono text-xs uppercase text-slate">{d.sentAt ? "sent" : d.status}</span>
-            </li>
-          ))}
+        <ul className="mt-2">
+          {digests.map((d) => {
+            const date = DateTime.fromJSDate(d.scheduledFor, { zone: timezone });
+            return (
+              <li key={d.id} className="border-b border-rule last:border-0">
+                <Link
+                  href={`/archive/${d.id}`}
+                  className="group flex items-baseline justify-between gap-4 py-2.5"
+                >
+                  <span className="font-display text-[1.0625rem] text-ink group-hover:text-editor">
+                    {date.toFormat("cccc d LLLL")}
+                  </span>
+                  <span className="shrink-0 text-sm text-ink-soft">
+                    {d.sentAt
+                      ? DateTime.fromJSDate(d.sentAt, { zone: timezone }).toFormat("HH:mm")
+                      : d.status === "ready"
+                        ? "Ready"
+                        : d.status}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       )}
-    </div>
+    </section>
   );
 }

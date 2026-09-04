@@ -18,8 +18,11 @@ export function SectorPicker() {
             key={sector}
             type="button"
             onClick={() => toggle(sector)}
-            className={`rounded-sm border px-3 py-1.5 font-mono text-xs uppercase tracking-wide transition-colors ${
-              selected.includes(sector) ? "border-amber bg-ink text-amber" : "border-ink/20 text-ink hover:border-ink"
+            aria-pressed={selected.includes(sector)}
+            className={`rounded-[3px] border px-3 py-1.5 text-sm transition-colors ${
+              selected.includes(sector)
+                ? "border-ink bg-ink text-paper"
+                : "border-rule text-ink-soft hover:border-ink hover:text-ink"
             }`}
           >
             {sector}
@@ -29,7 +32,9 @@ export function SectorPicker() {
       {selected.map((s) => (
         <input key={s} type="hidden" name="sectors" value={s} />
       ))}
-      {selected.length === 0 ? <p className="mt-2 text-xs text-destructive">Choose at least one sector.</p> : null}
+      {selected.length === 0 ? (
+        <p className="mt-2 text-sm text-editor">Choose at least one desk.</p>
+      ) : null}
     </div>
   );
 }

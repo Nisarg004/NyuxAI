@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getCountdownDisplay, formatRemaining } from "@/lib/countdown";
+import { DateTime } from "luxon";
+import { getCountdownDisplay, formatRemainingHuman } from "@/lib/countdown";
+import { safeTimezone } from "@/lib/schedule";
 
 export function CountdownHero(props: {
   sectors: string[];
@@ -15,34 +17,45 @@ export function CountdownHero(props: {
 
   useEffect(() => {
     setMounted(true);
-    const id = setInterval(() => setNow(new Date()), 1000);
+    const id = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(id);
   }, []);
 
   const display = mounted ? getCountdownDisplay({ ...props, now }) : null;
+  const zone = safeTimezone(props.timezone);
+  const weekday =
+    display && display.mode !== "unscheduled" && props.nextRunAt
+      ? DateTime.fromISO(props.nextRunAt, { zone }).toFormat("cccc")
+      : null;
 
   return (
-    <div className="rounded-md bg-ink px-8 py-10 text-paper">
+    <section>
+      <h2 className="font-display text-sm italic text-ink-soft">Your next edition</h2>
       {display === null ? (
-        <div className="h-8" />
+        <p className="mt-2 h-9 font-display text-2xl text-ink/30">&hellip;</p>
       ) : display.mode === "unscheduled" ? (
         <>
-          <p className="font-mono text-sm uppercase tracking-wide text-amber">{display.sectorLabel || "NO SECTORS SELECTED"}</p>
-          <p className="mt-2 font-display text-2xl">Not scheduled yet</p>
-          <p className="mt-1 text-sm text-paper/70">Set your delivery time below to start the countdown.</p>
+          <p className="mt-1 font-display text-[1.75rem] leading-tight text-ink">Not scheduled yet</p>
+          <p className="mt-1 text-[0.95rem] text-ink-soft">
+            Set a delivery time below and the countdown starts.
+          </p>
         </>
       ) : display.mode === "due" ? (
         <>
-          <p className="font-mono text-sm uppercase tracking-wide text-amber">
-            {display.sectorLabel} — {display.timeLabel}
+          <p className="mt-1 font-display text-[1.75rem] leading-tight text-ink">Going to press now</p>
+          <p className="mt-1 text-[0.95rem] text-ink-soft">
+            {display.sectorLabel || "No sectors chosen"}
           </p>
-          <p className="mt-2 font-mono text-3xl text-amber">SENDING SOON</p>
         </>
       ) : (
-        <p className="font-mono text-xl uppercase tracking-wide text-amber sm:text-2xl">
-          {display.sectorLabel} — {display.timeLabel} — NEXT BRIEF IN {formatRemaining(display.remainingMs)}
-        </p>
+        <>
+          <p className="mt-1 font-display text-[1.75rem] leading-tight text-ink sm:text-[2rem]">
+            {weekday ? `${weekday} ` : ""}
+            {display.timeLabel} — {formatRemainingHuman(display.remainingMs)}
+          </p>
+          <p className="mt-1 text-[0.95rem] text-ink-soft">{display.sectorLabel}</p>
+        </>
       )}
-    </div>
+    </section>
   );
 }

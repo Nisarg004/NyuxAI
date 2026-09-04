@@ -1,22 +1,29 @@
 import Link from "next/link";
 
 const LINKS = [
-  { href: "/dashboard", label: "Dashboard", key: "dashboard" as const },
+  { href: "/dashboard", label: "Today's desk", key: "dashboard" as const },
   { href: "/archive", label: "Archive", key: "archive" as const },
   { href: "/runs", label: "Runs", key: "runs" as const },
 ];
 
 export function Nav({ current }: { current: "dashboard" | "archive" | "runs" }) {
   return (
-    <header className="border-b border-border bg-ink text-paper">
-      <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
-        <span className="font-display text-lg tracking-tight">Brieff</span>
-        <nav className="flex gap-6 font-mono text-xs uppercase tracking-wide">
+    <header className="border-b border-rule bg-paper">
+      <div className="mx-auto flex max-w-2xl items-baseline justify-between gap-6 px-6 py-5">
+        <Link href="/dashboard" className="font-display text-2xl font-semibold leading-none tracking-tight text-ink">
+          Brieff
+        </Link>
+        <nav className="flex gap-6 text-sm">
           {LINKS.map((link) => (
             <Link
               key={link.key}
               href={link.href}
-              className={link.key === current ? "text-amber" : "text-paper/70 hover:text-paper"}
+              aria-current={link.key === current ? "page" : undefined}
+              className={
+                link.key === current
+                  ? "text-editor underline decoration-editor/40 decoration-1 underline-offset-4"
+                  : "text-ink-soft transition-colors hover:text-ink"
+              }
             >
               {link.label}
             </Link>

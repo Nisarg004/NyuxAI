@@ -10,16 +10,18 @@ export default async function ArchivePage() {
   return (
     <>
       <Nav current="archive" />
-      <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-10">
-        <header className="border-b border-ink pb-5">
-          <h1 className="font-display text-[2rem] font-semibold leading-[1.15] tracking-[-0.01em] text-ink">
-            Every edition
-          </h1>
-          <p className="mt-2 font-display italic text-ink-soft">
-            Everything the desk has sent {user.name}, most recent first.
-          </p>
-        </header>
-        <DigestList digests={digests} timezone={preferences.timezone} />
+      <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-10">
+        <div className="max-w-2xl">
+          <header className="border-b border-ink pb-5">
+            <h1 className="font-display text-[2rem] font-semibold leading-[1.15] tracking-[-0.01em] text-ink">
+              Every edition
+            </h1>
+            <p className="mt-2 font-display italic text-ink-soft">
+              Everything the desk has sent {user.name}, most recent first.
+            </p>
+          </header>
+          <DigestList digests={digests} timezone={preferences.timezone} />
+        </div>
       </main>
     </>
   );

@@ -10,25 +10,34 @@ export default async function RunsPage() {
   return (
     <>
       <Nav current="runs" />
-      <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-8">
-        <h1 className="font-display text-2xl text-ink">Runs</h1>
-        <p className="mt-1 text-sm text-slate">Every pipeline execution. Click a row for the stage-by-stage log.</p>
-        <table className="mt-6 w-full border-collapse rounded-md border border-border bg-white text-left">
-          <thead>
-            <tr className="border-b border-border bg-paper">
-              <th className="px-4 py-2 font-mono text-xs uppercase text-slate">Kind</th>
-              <th className="px-4 py-2 font-mono text-xs uppercase text-slate">User</th>
-              <th className="px-4 py-2 font-mono text-xs uppercase text-slate">Started</th>
-              <th className="px-4 py-2 font-mono text-xs uppercase text-slate">Duration</th>
-              <th className="px-4 py-2 font-mono text-xs uppercase text-slate">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {runs.map((run) => (
-              <RunRow key={run.id} run={run} timezone={preferences.timezone} />
-            ))}
-          </tbody>
-        </table>
+      <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-10">
+        <header className="max-w-2xl border-b border-ink pb-5">
+          <h1 className="font-display text-[2rem] font-semibold leading-[1.15] tracking-[-0.01em] text-ink">
+            The newsroom log
+          </h1>
+          <p className="mt-2 font-display italic text-ink-soft">
+            Every pipeline run, most recent first. Open one for the stage-by-stage record.
+          </p>
+        </header>
+
+        <div className="mt-6 overflow-x-auto">
+          <table className="w-full min-w-[42rem] border-collapse text-left">
+            <thead>
+              <tr className="border-b border-ink text-sm text-ink-soft">
+                <th className="py-2 pr-4 font-normal">Kind</th>
+                <th className="py-2 pr-4 font-normal">User</th>
+                <th className="py-2 pr-4 font-normal">Started</th>
+                <th className="py-2 pr-4 font-normal">Duration</th>
+                <th className="py-2 pr-0 font-normal">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {runs.map((run) => (
+                <RunRow key={run.id} run={run} timezone={preferences.timezone} />
+              ))}
+            </tbody>
+          </table>
+        </div>
       </main>
     </>
   );

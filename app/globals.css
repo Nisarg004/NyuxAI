@@ -61,11 +61,6 @@
   --color-editor: #8e2c33;
   --color-confirm: #3e6b4f;
 
-  /* Aliases so not-yet-redesigned pages (archive list, runs, onboarding)
-     inherit the new palette instead of losing their colors. */
-  --color-slate: #6b625b;
-  --color-amber: #8e2c33;
-
   --font-display: var(--font-display);
   --font-sans: var(--font-sans);
 }

@@ -15,6 +15,16 @@ type Run = {
   stageLog: unknown;
 };
 
+function StatusBadge({ status }: { status: string }) {
+  const cls =
+    status === "completed"
+      ? "bg-confirm/10 text-confirm"
+      : status === "failed"
+        ? "bg-editor/10 text-editor"
+        : "bg-ink/5 text-ink-soft";
+  return <span className={`rounded-[3px] px-1.5 py-0.5 text-xs ${cls}`}>{status}</span>;
+}
+
 export function RunRow({ run, timezone }: { run: Run; timezone: string }) {
   const [open, setOpen] = useState(false);
   const summary = open ? summarizeStageLog(Array.isArray(run.stageLog) ? (run.stageLog as unknown[]) : []) : null;
@@ -22,36 +32,32 @@ export function RunRow({ run, timezone }: { run: Run; timezone: string }) {
 
   return (
     <>
-      <tr onClick={() => setOpen((v) => !v)} className="cursor-pointer border-b border-border/60 hover:bg-paper">
-        <td className="px-4 py-2 font-mono text-xs uppercase text-slate">{run.kind}</td>
-        <td className="px-4 py-2 text-sm text-ink">{run.userEmail ?? "—"}</td>
-        <td className="px-4 py-2 font-mono text-xs text-slate">
+      <tr onClick={() => setOpen((v) => !v)} className="cursor-pointer border-b border-rule hover:bg-paper-deep/40">
+        <td className="py-2.5 pr-4 text-sm capitalize text-ink">{run.kind}</td>
+        <td className="py-2.5 pr-4 text-sm text-ink-soft">{run.userEmail ?? "—"}</td>
+        <td className="py-2.5 pr-4 text-sm text-ink-soft">
           {DateTime.fromJSDate(run.startedAt, { zone: timezone }).toFormat("d LLL, HH:mm:ss")}
         </td>
-        <td className="px-4 py-2 font-mono text-xs text-slate">{durationMs !== null ? `${(durationMs / 1000).toFixed(1)}s` : "running"}</td>
-        <td className="px-4 py-2">
-          <span
-            className={`rounded-sm px-1.5 py-0.5 font-mono text-[10px] uppercase ${
-              run.status === "completed" ? "bg-confirm/15 text-confirm" : run.status === "failed" ? "bg-destructive/15 text-destructive" : "bg-amber/15 text-amber"
-            }`}
-          >
-            {run.status}
-          </span>
+        <td className="py-2.5 pr-4 text-sm text-ink-soft">
+          {durationMs !== null ? `${(durationMs / 1000).toFixed(1)}s` : "running"}
+        </td>
+        <td className="py-2.5 pr-0">
+          <StatusBadge status={run.status} />
         </td>
       </tr>
       {open ? (
-        <tr className="border-b border-border/60 bg-paper">
-          <td colSpan={5} className="px-6 py-4 text-sm">
-            {run.error ? <p className="mb-3 text-destructive">{run.error}</p> : null}
+        <tr className="border-b border-rule bg-paper-deep/30">
+          <td colSpan={5} className="px-1 py-4 text-sm">
+            {run.error ? <p className="mb-3 text-editor">{run.error}</p> : null}
             {summary ? (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {summary.curator.selections.length > 0 ? (
                   <div>
-                    <p className="font-mono text-xs uppercase text-slate">Curator reasons</p>
-                    <ul className="mt-1 space-y-0.5 pl-3 text-xs text-ink">
+                    <p className="font-display italic text-ink-soft">Curator reasons</p>
+                    <ul className="mt-1.5 space-y-1 text-[0.9rem] leading-[1.55] text-ink">
                       {summary.curator.selections.map((s) => (
                         <li key={s.article_id}>
-                          <span className="font-mono uppercase text-amber">{s.sector}</span> ({s.score}) — {s.reason}
+                          <span className="text-editor">{s.sector}</span> ({s.score}) — {s.reason}
                         </li>
                       ))}
                     </ul>
@@ -60,8 +66,8 @@ export function RunRow({ run, timezone }: { run: Run; timezone: string }) {
                 {Object.entries(summary.editor).map(([sector, state]) =>
                   state.rejected.length > 0 ? (
                     <div key={sector}>
-                      <p className="font-mono text-xs uppercase text-slate">{sector} — rejected</p>
-                      <ul className="mt-1 space-y-0.5 pl-3 text-xs text-ink">
+                      <p className="font-display italic text-ink-soft">{sector} — rejected</p>
+                      <ul className="mt-1.5 space-y-1 text-[0.9rem] leading-[1.55] text-ink">
                         {state.rejected.map((r, i) => (
                           <li key={i}>{r.reason}</li>
                         ))}
@@ -69,8 +75,9 @@ export function RunRow({ run, timezone }: { run: Run; timezone: string }) {
                     </div>
                   ) : null
                 )}
-                <p className="font-mono text-xs text-slate">
-                  {summary.totals.selected} selected · {summary.totals.fetched} fetched · {summary.totals.approved} approved · {summary.totals.rejected} rejected
+                <p className="text-[0.9rem] text-ink-soft">
+                  {summary.totals.selected} selected, {summary.totals.fetched} fetched,{" "}
+                  {summary.totals.approved} approved, {summary.totals.rejected} rejected
                 </p>
               </div>
             ) : null}

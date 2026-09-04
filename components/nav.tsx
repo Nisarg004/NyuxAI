@@ -9,7 +9,7 @@ const LINKS = [
 export function Nav({ current }: { current: "dashboard" | "archive" | "runs" }) {
   return (
     <header className="border-b border-rule bg-paper">
-      <div className="mx-auto flex max-w-2xl items-baseline justify-between gap-6 px-6 py-5">
+      <div className="mx-auto flex max-w-5xl items-baseline justify-between gap-6 px-6 py-5">
         <Link href="/dashboard" className="font-display text-2xl font-semibold leading-none tracking-tight text-ink">
           Brieff
         </Link>

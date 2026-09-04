@@ -1,13 +1,13 @@
 import OpenAI from "openai";
 import { zodResponseFormat } from "openai/helpers/zod";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
-import type { z, ZodTypeAny } from "zod";
+import type { z, ZodType } from "zod";
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export type LLMResult<T> = { ok: true; degraded: false; data: T } | { ok: false; degraded: true; error: string };
 
-async function attempt<Schema extends ZodTypeAny>(
+async function attempt<Schema extends ZodType>(
   model: string,
   schema: Schema,
   schemaName: string,
@@ -41,7 +41,7 @@ async function attempt<Schema extends ZodTypeAny>(
 
 // Every LLM call in the pipeline goes through here: structured-output request, zod
 // validation, one retry with the error appended, then a typed degraded result. Never throws.
-export async function callLLM<Schema extends ZodTypeAny>(params: {
+export async function callLLM<Schema extends ZodType>(params: {
   model: string;
   schema: Schema;
   schemaName: string;

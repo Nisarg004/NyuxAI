@@ -16,6 +16,10 @@ export function CountdownHero(props: {
   const [now, setNow] = useState<Date>(new Date());
 
   useEffect(() => {
+    // Deliberate hydration-safe mount flag: server and first client render must
+    // match (no `now`-derived output), so the real countdown only turns on
+    // after mount. The one extra render this causes is the point, not a bug.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
     const id = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(id);

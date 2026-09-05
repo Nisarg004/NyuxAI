@@ -20,14 +20,22 @@ export function isAuthorizedCronCaller(request: Request): boolean {
 }
 
 /**
- * Base URL for a server-to-server call back into this same deployment. Prefers
- * Vercel's auto-provided VERCEL_URL (always correct for the current deployment,
- * including previews) over the manually-configured NEXT_PUBLIC_APP_URL, which
- * can lag behind right after a deploy.
+ * Base URL for a server-to-server call back into this same deployment.
+ *
+ * Deliberately prefers NEXT_PUBLIC_APP_URL over Vercel's auto-provided
+ * VERCEL_URL: VERCEL_URL is the per-deployment unique hostname
+ * (`brieff-<hash>-team.vercel.app`), and Vercel's own Deployment Protection
+ * gates that hostname by default — a server-to-server fetch to it gets
+ * intercepted by Vercel's platform auth wall before it ever reaches our
+ * route, returning a "Protected deployment" 401 (learned the hard way: this
+ * broke Send Now in production). The assigned production alias
+ * (NEXT_PUBLIC_APP_URL, e.g. brieff-nine.vercel.app) isn't subject to that
+ * wall, so it's the one that's actually reachable for this loopback call.
  */
 export function getInternalBaseUrl(): string {
+  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  return "http://localhost:3000";
 }
 
 export function cronSecretHeader(): Record<string, string> {

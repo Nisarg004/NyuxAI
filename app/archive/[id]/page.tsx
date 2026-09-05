@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/session";
 import { getDigestDetail } from "@/lib/data/archive";
 import { formatSectorList } from "@/lib/countdown";
 import { Nav } from "@/components/nav";
-import { SectorSection } from "@/components/archive/sector-section";
+import { BriefBody } from "@/components/brief/brief-body";
 
 export default async function ArchiveDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -12,7 +12,7 @@ export default async function ArchiveDetailPage({ params }: { params: Promise<{ 
   const detail = await getDigestDetail(id, user.id);
   if (!detail) notFound();
 
-  const { digest, itemsBySector, rejectionsBySector, existingFeedback } = detail;
+  const { digest, editorsNote, itemsBySector, rejectionsBySector, existingFeedback } = detail;
   const date = DateTime.fromJSDate(digest.sentAt ?? digest.scheduledFor, { zone: preferences.timezone });
   const sectorLabel = formatSectorList(itemsBySector.map((s) => s.sector));
 
@@ -31,23 +31,12 @@ export default async function ArchiveDetailPage({ params }: { params: Promise<{ 
             {sectorLabel ? <p className="mt-1 text-sm text-ink-soft">{sectorLabel}</p> : null}
           </header>
 
-          <div>
-            {itemsBySector.map(({ sector, items }) => (
-              <SectorSection
-                key={sector}
-                sector={sector}
-                items={items.map((i) => ({
-                  id: i.id,
-                  headline: i.headline,
-                  summary: i.summary,
-                  whyItMatters: i.whyItMatters,
-                  sourceUrl: i.sourceUrl,
-                }))}
-                rejected={rejectionsBySector[sector] ?? []}
-                existingFeedback={existingFeedback}
-              />
-            ))}
-          </div>
+          <BriefBody
+            editorsNote={editorsNote}
+            itemsBySector={itemsBySector}
+            rejectionsBySector={rejectionsBySector}
+            existingFeedback={existingFeedback}
+          />
         </div>
       </main>
     </>

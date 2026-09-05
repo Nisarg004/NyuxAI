@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { DateTime } from "luxon";
+import { readerLabel } from "@/lib/digest-status";
 
 export function DigestList({
   digests,
@@ -27,11 +28,7 @@ export function DigestList({
                 {date.toFormat("cccc d LLLL yyyy")}
               </span>
               <span className="shrink-0 text-sm text-ink-soft">
-                {d.sentAt
-                  ? `Sent ${DateTime.fromJSDate(d.sentAt, { zone: timezone }).toFormat("HH:mm")}`
-                  : d.status === "ready"
-                    ? "Ready"
-                    : d.status}
+                {readerLabel(d.status, d.sentAt, timezone)}
               </span>
             </Link>
           </li>

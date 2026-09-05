@@ -321,7 +321,7 @@ export async function generateDigest(
           userId,
           scheduledFor: new Date(),
           status: "ready",
-          runMeta: { runId },
+          runMeta: { runId, editorsNote },
         })
         .returning({ id: digests.id });
       digestId = digest.id;

@@ -8,7 +8,12 @@ import { cronSecretHeader, getInternalBaseUrl } from "@/lib/internal-api";
  * /run with the CRON_SECRET attached, piping the SSE stream straight through.
  * /run is the endpoint that actually does the work and is the one that
  * requires the secret — see lib/internal-api.ts.
+ *
+ * This proxy's own duration must cover the full time it waits on /run, or it
+ * gets killed first regardless of /run's own allowance — set to match.
  */
+export const maxDuration = 300;
+
 export async function POST() {
   const userId = await getSessionUserId();
   if (!userId) {

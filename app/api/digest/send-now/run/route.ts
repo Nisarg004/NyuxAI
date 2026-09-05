@@ -9,6 +9,11 @@ import type { DigestEmailItem, DigestEmailSector } from "@/lib/email/digest-emai
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
+// The actual pipeline + email send; a multi-sector user's run has taken over
+// 40s even for 2 sectors in live testing. 300s is Vercel's ceiling on Hobby
+// (with Fluid Compute) — set explicitly, not left as an implicit default.
+export const maxDuration = 300;
+
 // Seeds every sector the user is subscribed to, not just the ones with items —
 // a sector that approved nothing still gets an explicit empty entry so the
 // template can say so rather than silently omitting the section.

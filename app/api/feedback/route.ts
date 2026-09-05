@@ -1,15 +1,17 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { digestItems, digests, feedback } from "@/lib/db/schema";
-import { getSessionUserId } from "@/lib/session";
+import { isAuthorizedCronCaller } from "@/lib/internal-api";
 import { countSignalsSinceProfileUpdate, regenerateFeedbackProfile } from "@/lib/agents/feedback-profile";
 
 const VALID_SIGNALS = new Set(["up", "down", "save"]);
 
+// Requires the CRON_SECRET bearer token — see lib/internal-api.ts. The browser
+// never calls this directly; app/archive/actions.ts resolves the session and
+// attaches the secret on the app's behalf.
 export async function POST(request: Request) {
-  const userId = await getSessionUserId();
-  if (!userId) {
-    return Response.json({ success: false, error: "No session" }, { status: 401 });
+  if (!isAuthorizedCronCaller(request)) {
+    return Response.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
 
   let body;
@@ -19,11 +21,15 @@ export async function POST(request: Request) {
     return Response.json({ success: false, error: "Invalid JSON" }, { status: 400 });
   }
 
+  const userId = typeof body.userId === "string" ? body.userId : null;
   const digestItemId = typeof body.digestItemId === "string" ? body.digestItemId : null;
   const signal = typeof body.signal === "string" ? body.signal : null;
 
-  if (!digestItemId || !signal || !VALID_SIGNALS.has(signal)) {
-    return Response.json({ success: false, error: "digestItemId and a valid signal are required" }, { status: 400 });
+  if (!userId || !digestItemId || !signal || !VALID_SIGNALS.has(signal)) {
+    return Response.json(
+      { success: false, error: "userId, digestItemId, and a valid signal are required" },
+      { status: 400 }
+    );
   }
 
   const [item] = await db

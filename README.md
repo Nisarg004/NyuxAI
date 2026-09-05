@@ -60,12 +60,22 @@ that user instead of creating a duplicate (see `app/onboarding/actions.ts`).
 
 ## Triggering each phase manually
 
-Since there's no live cron (Phase 6 was skipped), every stage is triggered by hand:
+Since there's no live cron (Phase 6 was skipped), every stage is triggered by hand.
+
+**A note on auth:** `/api/ingest`, `/api/digest/generate`, `/api/digest/send-now/run`, and
+`/api/feedback` all require `Authorization: Bearer $CRON_SECRET` — they refuse to do
+anything without it, which is what makes it safe to expose this app on a public URL with
+no other auth in front of it. The commands below need that header. The app's own UI never
+sends it from the browser: `/api/digest/send-now` (what the dashboard's Send Now button
+calls) and `app/archive/actions.ts`'s `submitFeedback` (what the feedback buttons call)
+resolve the session server-side and attach the secret on a server-to-server call — see
+`lib/internal-api.ts`.
 
 **1. Ingestion** — fetch all active RSS sources and store new articles:
 
 ```bash
-curl -X POST http://localhost:3000/api/ingest
+curl -X POST http://localhost:3000/api/ingest \
+  -H "Authorization: Bearer $CRON_SECRET"
 ```
 
 Returns `{ fetched, inserted, skipped, failedFeeds, disabledSources }` and writes a `runs`
@@ -79,16 +89,17 @@ one user without persisting or sending anything:
 npm run digest:test <userId>
 ```
 
-`scripts/digest-test.ts` prints the user's current `feedback_profile`, runs
-`generateDigest(userId, { dryRun: true })`, then prints the editor's note, the approved
-items grouped by sector (headline, summary, why-it-matters, source URL), and any items the
-Editor rejected with its stated reason. Find a `userId` via `npm run db:studio` or the
-`users` table.
+`scripts/digest-test.ts` calls `generateDigest` directly (no HTTP, no auth needed) — it
+prints the user's current `feedback_profile`, runs `generateDigest(userId, { dryRun: true
+})`, then prints the editor's note, the approved items grouped by sector (headline,
+summary, why-it-matters, source URL), and any items the Editor rejected with its stated
+reason. Find a `userId` via `npm run db:studio` or the `users` table.
 
 You can also hit the underlying route directly:
 
 ```bash
 curl -X POST http://localhost:3000/api/digest/generate \
+  -H "Authorization: Bearer $CRON_SECRET" \
   -H "Content-Type: application/json" \
   -d '{"userId":"<uuid>","dryRun":true}'
 ```
@@ -98,18 +109,30 @@ cookie) and email it immediately:
 
 - In the UI: dashboard → **Send now** button, which streams live per-stage progress
   (curator, researcher, writer, editor, email) over SSE.
-- Or directly: `curl -N -X POST http://localhost:3000/api/digest/send-now -b "brieff_uid=<uuid>"`
+- `POST /api/digest/send-now` (session-cookie-gated, what the button calls) resolves the
+  cookie to a `userId` and re-issues the request to `POST /api/digest/send-now/run` with
+  the secret attached, piping the SSE stream straight back — see
+  `app/api/digest/send-now/route.ts`. To trigger a send without the UI, hit `/run`
+  directly with the secret and an explicit `userId`:
+
+```bash
+curl -N -X POST http://localhost:3000/api/digest/send-now/run \
+  -H "Authorization: Bearer $CRON_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"userId":"<uuid>"}'
+```
 
 This persists the digest and its items, sends the email via Resend, and sets `sent_at`.
 
 **4. Feedback** — thumbs up/down/save on a digest item, from the archive UI
-(`/archive/[id]`) or directly:
+(`/archive/[id]`, which calls the `submitFeedback` Server Action in
+`app/archive/actions.ts`) or directly against the underlying route:
 
 ```bash
 curl -X POST http://localhost:3000/api/feedback \
+  -H "Authorization: Bearer $CRON_SECRET" \
   -H "Content-Type: application/json" \
-  -b "brieff_uid=<uuid>" \
-  -d '{"digestItemId":"<uuid>","signal":"down"}'
+  -d '{"userId":"<uuid>","digestItemId":"<uuid>","signal":"down"}'
 ```
 
 Every 3rd signal since the last profile update triggers a regeneration of the user's

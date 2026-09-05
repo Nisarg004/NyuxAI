@@ -102,6 +102,29 @@ sector, headline }`), producing `feedback_profile` as literal `"Prefers: … Avo
 (`feedbackProfileOutputSchema`). That string is injected verbatim into the Curator's `user`
 prompt on the next run.
 
+## Auth model for the API routes (`lib/internal-api.ts`)
+
+There's no user auth (deliberately deferred — see CC.md), but the four routes that trigger
+real work — `/api/ingest`, `/api/digest/generate`, `/api/digest/send-now/run`, and
+`/api/feedback` — all require `Authorization: Bearer ${CRON_SECRET}` and refuse to do
+anything without it (`isAuthorizedCronCaller`, fails closed if `CRON_SECRET` itself is
+unset). This is what makes it safe to run this app on a public URL with no other auth in
+front of it. The app's own UI never sends that header from the browser:
+
+- **Send now**: the browser calls `/api/digest/send-now` (session-cookie-gated, unchanged
+  contract). That route resolves `getSessionUserId()`, then re-issues the request to
+  `/api/digest/send-now/run` with the secret attached, piping the SSE response straight
+  back (`getInternalBaseUrl()` prefers Vercel's `VERCEL_URL` over `NEXT_PUBLIC_APP_URL` for
+  this loopback call). `/run` is the one that actually executes the pipeline and sends
+  email, and is the one a future Phase 6 cron dispatcher would call directly.
+- **Feedback**: the browser calls the `submitFeedback` Server Action
+  (`app/archive/actions.ts`), not `/api/feedback` directly. The action resolves the
+  session, then does the same secret-attached server-to-server call.
+
+Any new route that triggers an LLM call, a send, or a write with real cost should follow
+this pattern — gate the route with `isAuthorizedCronCaller`, add a session-gated
+proxy/action if the browser needs to reach it.
+
 ## Non-negotiable engineering rules (verified against current code)
 
 1. **Every LLM call goes through one wrapper** — `lib/llm.ts` is the only file that imports

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { submitFeedback } from "@/app/archive/actions";
 
 export function FeedbackButtons({ digestItemId, initial }: { digestItemId: string; initial: "up" | "down" | "save" | null }) {
   const [signal, setSignal] = useState(initial);
@@ -10,12 +11,8 @@ export function FeedbackButtons({ digestItemId, initial }: { digestItemId: strin
   const send = async (next: "up" | "down") => {
     setPending(true);
     try {
-      const res = await fetch("/api/feedback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ digestItemId, signal: next }),
-      });
-      if (!res.ok) throw new Error("Feedback failed to save");
+      const result = await submitFeedback(digestItemId, next);
+      if (!result.success) throw new Error(result.error ?? "Feedback failed to save");
       setSignal(next);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Feedback failed to save");

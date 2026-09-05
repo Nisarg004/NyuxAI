@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { generateDigest } from "@/lib/agents/pipeline";
+import { isAuthorizedCronCaller } from "@/lib/internal-api";
 
 export async function POST(request: Request) {
+  if (!isAuthorizedCronCaller(request)) {
+    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+  }
+
   const body = await request.json();
   const userId = typeof body.userId === "string" ? body.userId : null;
   if (!userId) {

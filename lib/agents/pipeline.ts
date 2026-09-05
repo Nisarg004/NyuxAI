@@ -19,6 +19,7 @@ export type GenerateDigestResult =
       editorsNote: string;
       rejected: { article_id: string; reason: string }[];
       stageLog: StageLogEntry[];
+      skipped?: boolean;
     }
   | { success: false; runId: string; error: string; stageLog: StageLogEntry[] };
 
@@ -139,7 +140,7 @@ async function runSectorPipeline(
 
 export async function generateDigest(
   userId: string,
-  opts: { dryRun: boolean; onStage?: (entry: StageLogEntry) => void }
+  opts: { dryRun: boolean; onStage?: (entry: StageLogEntry) => void; scheduledFor?: Date }
 ): Promise<GenerateDigestResult> {
   const [{ id: runId }] = await db
     .insert(runs)
@@ -319,11 +320,22 @@ export async function generateDigest(
         .insert(digests)
         .values({
           userId,
-          scheduledFor: new Date(),
+          scheduledFor: opts.scheduledFor ?? new Date(),
           status: "ready",
           runMeta: { runId },
         })
+        .onConflictDoNothing()
         .returning({ id: digests.id });
+
+      if (!digest) {
+        // A digest already exists for this exact (user_id, scheduled_for) slot —
+        // the unique index blocked a second insert. Ship nothing: no digest_items,
+        // no email. This is what lets a cron dispatcher retry a slot safely.
+        log({ stage: "pipeline", event: "skipped", at: now(), reason: "digest already exists for this scheduled_for slot" });
+        await db.update(runs).set({ finishedAt: new Date(), status: "completed", stageLog }).where(eq(runs.id, runId));
+        return { success: true, runId, digestId: null, items: [], editorsNote: "", rejected: [], stageLog, skipped: true };
+      }
+
       digestId = digest.id;
 
       if (rankedItems.length > 0) {

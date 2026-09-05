@@ -10,8 +10,10 @@ Stack: Next.js 15 (App Router) + TypeScript + Tailwind + shadcn/ui, Postgres via
 ORM (hosted on Supabase), the OpenAI SDK for the agents, `resend` + `@react-email/components`
 for email, `rss-parser` for ingestion, `luxon` for all timezone math.
 
-> Phase 6 (cron scheduler / GitHub Actions deploy) was intentionally skipped — there is no
-> live cron and nothing is deployed. Every phase below is triggered manually.
+> The scheduler (Phase 6) is built: `POST /api/cron/dispatch` reads each user's
+> `next_run_at` and sends their brief when it's due. `.github/workflows/dispatch.yml` polls
+> it every 15 minutes; `npm run watch` polls it every 60s for demos. Ingestion still runs
+> by hand — see below. Everything can also still be triggered manually.
 
 ## Local setup
 
@@ -28,7 +30,7 @@ cp .env.example .env.local   # then fill in the values below
 | `MODEL_FAST` | Model id for the Curator, Editor, editor's-note, and feedback-profile calls |
 | `JINA_API_KEY` | Optional. Sent as a bearer token to `r.jina.ai` for full-text fetches; the Researcher works without it, just at a lower rate limit |
 | `RESEND_API_KEY` | Resend API key, used to send digest emails |
-| `CRON_SECRET` | Reserved for the (unbuilt) cron dispatch route — not currently read anywhere |
+| `CRON_SECRET` | Bearer token for the write routes (`/api/ingest`, `/api/digest/*`, `/api/feedback`) and the cron dispatcher (`/api/cron/dispatch`). Fails closed if unset |
 | `NEXT_PUBLIC_APP_URL` | Base URL used to build links inside sent emails (e.g. `http://localhost:3000`) |
 
 Both `MODEL_WRITER` and `MODEL_FAST` are required at import time — `lib/agents/models.ts`
@@ -60,7 +62,8 @@ that user instead of creating a duplicate (see `app/onboarding/actions.ts`).
 
 ## Triggering each phase manually
 
-Since there's no live cron (Phase 6 was skipped), every stage is triggered by hand.
+Ingestion runs by hand; digest send can run by hand or via the scheduler (see
+"Scheduling" below).
 
 **A note on auth:** `/api/ingest`, `/api/digest/generate`, `/api/digest/send-now/run`, and
 `/api/feedback` all require `Authorization: Bearer $CRON_SECRET` — they refuse to do
@@ -143,11 +146,40 @@ the Curator's prompt on the next run.
 runs alike); expand a row to see the full `stage_log`, including the Curator's per-article
 `reason` and the Editor's rejections with their reasons.
 
+## Scheduling
+
+`POST /api/cron/dispatch` (bearer `$CRON_SECRET`) finds every active user whose
+`next_run_at` has passed, sends their brief via `/api/digest/send-now/run`, and rolls
+`next_run_at` forward one day with `computeNextRunAt` (`lib/schedule.ts`, unit-tested in
+`lib/schedule.test.ts`). Each user's slot is claimed with an atomic conditional `UPDATE`,
+and the `digests (user_id, scheduled_for)` unique index is the backstop, so overlapping
+dispatches never double-send (`lib/cron/dispatch.test.ts` proves the race). The JSON
+response reports `due`, per-user results, and `durationMs`.
+
+**Production** — `.github/workflows/dispatch.yml` runs every 15 minutes (and on
+`workflow_dispatch`). Add two repo secrets under **Settings → Secrets and variables →
+Actions**:
+
+| Secret | Value |
+| --- | --- |
+| `DISPATCH_URL` | The deployed base URL, no trailing slash — e.g. `https://brieff-nine.vercel.app` |
+| `CRON_SECRET` | The exact same value as the `CRON_SECRET` env var in the deployment |
+
+**Demos** — GitHub's cron can lag 5–15 minutes. For a tight loop, run the poller locally:
+
+```bash
+npm run watch                                    # polls http://localhost:3000 every 60s
+BASE_URL=https://brieff-nine.vercel.app npm run watch
+```
+
+It prints `0 due` or `sending for <email>` each tick. Needs `CRON_SECRET` in `.env.local`.
+
+## Tests
+
+```bash
+npm test   # node --test over lib/**/*.test.ts (schedule math + the dispatch claim race)
+```
+
 ## What's not built
 
-Phase 6 (`POST /api/cron/dispatch`, the GitHub Actions dispatch workflow, and
-`computeNextRunAt` wired into an actual scheduler loop) was intentionally skipped per
-product decision — this is a manually-triggered demo app, not a deployed one.
-`lib/schedule.ts` still exposes `computeNextRunAt` and is used to set `next_run_at` at
-onboarding and preference updates, but nothing currently reads `next_run_at` to fire a
-send.
+Everything from CC.md's phases 1–7 is built.

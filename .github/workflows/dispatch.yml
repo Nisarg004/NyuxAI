@@ -1,0 +1,33 @@
+name: dispatch
+
+# Fires the Brieff scheduler. Every 15 minutes it POSTs to /api/cron/dispatch on
+# the deployed app, which finds every user whose delivery time has passed and
+# sends their brief. GitHub's cron is best-effort and often runs several minutes
+# late — that's fine here, delivery times have minute granularity and the route
+# is idempotent per (user, scheduled slot). For demos where even 5-15 minutes of
+# lateness is too much, run `npm run watch` locally instead (60s polling).
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+# Never let two dispatch runs overlap.
+concurrency:
+  group: dispatch
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: POST /api/cron/dispatch
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --max-time 320 \
+            -X POST "${DISPATCH_URL%/}/api/cron/dispatch" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json"
+        env:
+          DISPATCH_URL: ${{ secrets.DISPATCH_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}

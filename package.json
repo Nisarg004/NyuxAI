@@ -11,7 +11,9 @@
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx lib/db/seed.ts",
     "db:studio": "drizzle-kit studio",
-    "digest:test": "tsx scripts/digest-test.ts"
+    "digest:test": "tsx scripts/digest-test.ts",
+    "watch": "tsx scripts/watch.ts",
+    "test": "node --import tsx --test \"lib/**/*.test.ts\""
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",

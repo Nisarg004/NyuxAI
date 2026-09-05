@@ -5,9 +5,11 @@
 Brieff is a personalized-news-briefing app: a four-agent pipeline (Curator → Researcher →
 Writer → Editor) builds a sourced daily brief per user, sent by email and readable in-app,
 with a thumbs up/down feedback loop that reshapes future curation. Full original build
-spec (phases 1–7): `files/CC.md`. Phases 1–5 and 7 are built; Phase 6 (cron scheduler /
-GitHub Actions deploy) was intentionally skipped — this is a manually-triggered app, not a
-deployed one. The current UI is a warm-newsprint/ink/oxblood editorial design (Fraunces +
+spec (phases 1–7): `files/CC.md`. Phases 1–7 are built. Phase 6 (cron scheduler) was
+skipped for a long time and then added: `POST /api/cron/dispatch` reads `next_run_at`,
+fires `/api/digest/send-now/run` per due user, and rolls the slot forward;
+`.github/workflows/dispatch.yml` polls it every 15 min and `npm run watch` polls it every
+60s for demos. See "The cron dispatcher" below. The current UI is a warm-newsprint/ink/oxblood editorial design (Fraunces +
 Hanken Grotesk, no monospace, "desk"/"edition" language) — this superseded an earlier
 dark-mode/amber direction described in CC.md's Phase 5 section; treat that section as
 historical.
@@ -159,9 +161,36 @@ proxy/action if the browser needs to reach it.
    (~360 lines) is the natural exception as the one place that has to know about every
    stage.
 
+## The cron dispatcher (Phase 6)
+
+`runDispatch` (`lib/cron/dispatch.ts`), exposed as `POST /api/cron/dispatch`
+(`isAuthorizedCronCaller`-gated, `maxDuration = 300`):
+
+1. Selects `preferences` rows where `is_active` and `next_run_at <= now()`, joined to
+   `users` for the email.
+2. Per user, **atomically claims the slot**: `claimDueRun` runs
+   `UPDATE preferences SET next_run_at = <computeNextRunAt(...)> WHERE user_id = ? AND
+   next_run_at = <the exact value just read>` and returns whether it matched a row. A
+   second concurrent dispatcher (overlapping GitHub Actions run, or `npm run watch` firing
+   mid-pipeline) matches zero rows and skips the user. This is the primary double-send
+   guard; `lib/cron/dispatch.test.ts` races two claims against one DB row to prove it.
+3. Loops back into `/api/digest/send-now/run` with `cronSecretHeader()` and
+   `scheduledFor` = the due slot, drains the SSE stream, records the terminal event.
+   Passing `scheduledFor` makes `generateDigest` insert the `digests` row with that exact
+   timestamp and `.onConflictDoNothing()`, so the `(user_id, scheduled_for)` unique index
+   is the backstop guard — a true simultaneous race that somehow passes step 2 still can't
+   double-insert. `generateDigest` returns `{ ..., skipped: true }` in that case.
+
+`next_run_at` is rolled forward *before* the pipeline runs, so a user whose pipeline fails
+isn't retried every 15 minutes forever (the failure is in a `runs` row; they get tomorrow's
+brief). Users are processed sequentially; the JSON response includes `durationMs` so the
+300s ceiling stays visible as the user count grows.
+
+**Triggers**: `.github/workflows/dispatch.yml` (`*/15 * * * *` + `workflow_dispatch`) curls
+the deployed route — needs repo secrets `DISPATCH_URL` (production base URL) and
+`CRON_SECRET`. `npm run watch` (`scripts/watch.ts`) polls the same route every 60s against
+`BASE_URL` (default `http://localhost:3000`) for demos where Actions' lateness is too slow.
+
 ## Not built
 
-Phase 6 — `POST /api/cron/dispatch`, `.github/workflows/dispatch.yml`, and anything that
-actually reads `next_run_at` to fire a send — was intentionally skipped. `lib/schedule.ts`'s
-`computeNextRunAt` is used at onboarding and preference updates to *set* `next_run_at`, but
-nothing currently consumes it. All phases are triggered manually — see `README.md`.
+Nothing outstanding from CC.md's phases 1–7.

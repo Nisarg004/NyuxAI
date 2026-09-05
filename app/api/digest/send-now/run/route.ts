@@ -51,7 +51,7 @@ export async function POST(request: Request) {
     });
   }
 
-  let body: { userId?: unknown };
+  let body: { userId?: unknown; scheduledFor?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -64,6 +64,17 @@ export async function POST(request: Request) {
   const userId = typeof body.userId === "string" ? body.userId : null;
   if (!userId) {
     return new Response(JSON.stringify({ success: false, error: "userId is required" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // Optional — a cron dispatcher passes the slot it's filling so the digests
+  // unique index on (user_id, scheduled_for) can reject a double-send. The
+  // browser proxy never sends this, so send-now keeps getting a fresh timestamp.
+  const scheduledFor = typeof body.scheduledFor === "string" ? new Date(body.scheduledFor) : undefined;
+  if (scheduledFor && Number.isNaN(scheduledFor.getTime())) {
+    return new Response(JSON.stringify({ success: false, error: "scheduledFor is not a valid date" }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
     });
@@ -88,10 +99,17 @@ export async function POST(request: Request) {
         const result = await generateDigest(userId, {
           dryRun: false,
           onStage: (entry) => send({ type: "stage", entry }),
+          scheduledFor,
         });
 
         if (!result.success) {
           send({ type: "error", runId: result.runId, error: result.error });
+          controller.close();
+          return;
+        }
+
+        if (result.skipped) {
+          send({ type: "done", runId: result.runId, digestId: null, sent: false, note: "A digest for this scheduled slot already exists; skipping." });
           controller.close();
           return;
         }

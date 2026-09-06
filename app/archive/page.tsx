@@ -1,11 +1,11 @@
 import { requireUser } from "@/lib/session";
-import { getRecentDigests } from "@/lib/data/digests";
+import { getDigestSummaries } from "@/lib/data/digests";
 import { Nav } from "@/components/nav";
 import { DigestList } from "@/components/archive/digest-list";
 
 export default async function ArchivePage() {
   const { user, preferences } = await requireUser();
-  const digests = await getRecentDigests(user.id, 50);
+  const summaries = await getDigestSummaries(user.id, 50);
 
   return (
     <>
@@ -20,7 +20,7 @@ export default async function ArchivePage() {
               Everything the desk has sent {user.name}, most recent first.
             </p>
           </header>
-          <DigestList digests={digests} timezone={preferences.timezone} />
+          <DigestList summaries={summaries} timezone={preferences.timezone} />
         </div>
       </main>
     </>

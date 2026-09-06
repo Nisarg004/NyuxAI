@@ -1,5 +1,5 @@
 import { requireUser } from "@/lib/session";
-import { getRecentDigests } from "@/lib/data/digests";
+import { getDigestSummaries } from "@/lib/data/digests";
 import { getDashboardBrief } from "@/lib/data/dashboard-brief";
 import { Nav } from "@/components/nav";
 import { NextBriefLine } from "@/components/dashboard/next-brief-line";
@@ -11,8 +11,9 @@ import { PreferencesCard } from "@/components/dashboard/preferences-card";
 
 export default async function DashboardPage() {
   const { user, preferences } = await requireUser();
-  const digests = await getRecentDigests(user.id);
+  const summaries = await getDigestSummaries(user.id);
   const brief = await getDashboardBrief(user.id, preferences.timezone);
+  const inlineId = brief.kind === "none" ? undefined : brief.detail.digest.id;
 
   return (
     <>
@@ -61,7 +62,11 @@ export default async function DashboardPage() {
           )}
 
           <div className="mt-12 border-t border-rule pt-6">
-            <PastBriefs digests={digests} timezone={preferences.timezone} />
+            <PastBriefs
+              summaries={summaries}
+              excludeId={inlineId}
+              timezone={preferences.timezone}
+            />
           </div>
 
           <div className="mt-10 border-t border-rule pt-6">

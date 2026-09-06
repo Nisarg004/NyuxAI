@@ -1,15 +1,21 @@
 import Link from "next/link";
-import { DateTime } from "luxon";
-import { readerLabel } from "@/lib/digest-status";
+import { groupBriefsByDay } from "@/lib/brief-index";
+import type { DigestSummary } from "@/lib/data/digests";
+
+function runStatusSuffix(status: string): string {
+  if (status === "failed") return " · didn’t finish";
+  if (status === "generating") return " · being written";
+  return "";
+}
 
 export function DigestList({
-  digests,
+  summaries,
   timezone,
 }: {
-  digests: { id: string; scheduledFor: Date; sentAt: Date | null; status: string; subject: string | null }[];
+  summaries: DigestSummary[];
   timezone: string;
 }) {
-  if (digests.length === 0) {
+  if (summaries.length === 0) {
     return (
       <p className="mt-6 text-[1.0625rem] leading-[1.7] text-ink-soft">
         No editions yet. Send one from your desk to see it here.
@@ -17,23 +23,31 @@ export function DigestList({
     );
   }
 
+  const rows = groupBriefsByDay(summaries, timezone);
+
   return (
     <ul className="mt-2">
-      {digests.map((d) => {
-        const date = DateTime.fromJSDate(d.scheduledFor, { zone: timezone });
-        return (
-          <li key={d.id} className="border-b border-rule last:border-0">
-            <Link href={`/archive/${d.id}`} className="group flex items-baseline justify-between gap-4 py-3">
+      {rows.map((row) => (
+        <li key={row.key} className="border-b border-rule last:border-0">
+          <Link href={`/archive/${row.latestId}`} className="group block py-3">
+            <div className="flex items-baseline justify-between gap-4">
               <span className="font-display text-[1.0625rem] text-ink group-hover:text-editor">
-                {date.toFormat("cccc d LLLL yyyy")}
+                {row.dayLabel}
               </span>
               <span className="shrink-0 text-sm text-ink-soft">
-                {readerLabel(d.status, d.sentAt, timezone)}
+                {row.itemCount} item{row.itemCount === 1 ? "" : "s"}
+                {row.runs > 1 ? ` · ${row.runs} runs` : ""}
+                {runStatusSuffix(row.status)}
               </span>
-            </Link>
-          </li>
-        );
-      })}
+            </div>
+            {row.headlines.length > 0 ? (
+              <p className="mt-1 line-clamp-2 text-sm leading-[1.5] text-ink-soft">
+                {row.headlines.join(" · ")}
+              </p>
+            ) : null}
+          </Link>
+        </li>
+      ))}
     </ul>
   );
 }

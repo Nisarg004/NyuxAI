@@ -12,7 +12,8 @@
     "db:seed": "tsx lib/db/seed.ts",
     "db:studio": "drizzle-kit studio",
     "digest:test": "tsx scripts/digest-test.ts",
-    "landing:test": "tsx scripts/landing-test.ts"
+    "landing:test": "tsx scripts/landing-test.ts",
+    "test": "node --import tsx --test \"lib/**/*.test.ts\""
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",

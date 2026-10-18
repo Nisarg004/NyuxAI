@@ -3,10 +3,11 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import { PipelineProgress } from "@/components/pipeline-progress";
 import { useSendNow } from "@/lib/hooks/use-send-now";
 
+/** A quiet off-schedule re-run. The dashboard leads with the brief itself;
+ * this is a single line beneath it for pulling the next edition forward. */
 export function SendNowPanel() {
   const { status, result, start, summary } = useSendNow();
   const router = useRouter();
@@ -23,16 +24,13 @@ export function SendNowPanel() {
 
   return (
     <section>
-      <div className="flex items-baseline justify-between">
-        <h2 className="font-display text-sm italic text-ink-soft">An edition now, off schedule</h2>
-        <Button
-          onClick={start}
-          disabled={status === "running"}
-          className="rounded-[3px] bg-ink px-4 text-paper hover:bg-editor"
-        >
-          {status === "running" ? "Going to press…" : "Send now"}
-        </Button>
-      </div>
+      <button
+        onClick={start}
+        disabled={status === "running"}
+        className="text-sm text-editor underline decoration-editor/40 underline-offset-4 hover:decoration-editor disabled:text-ink-soft disabled:no-underline"
+      >
+        {status === "running" ? "Going to press…" : "Bring the next edition forward →"}
+      </button>
 
       {status !== "idle" ? <PipelineProgress summary={summary} /> : null}
     </section>

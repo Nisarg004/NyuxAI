@@ -393,7 +393,7 @@ export async function generateDigest(
         userId,
         scheduledFor: opts.scheduledFor ?? new Date(),
         status: "ready",
-        runMeta: { runId: result.runId },
+        runMeta: { runId: result.runId, editorsNote: rest.editorsNote },
       })
       .onConflictDoNothing()
       .returning({ id: digests.id });

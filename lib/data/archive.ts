@@ -12,7 +12,9 @@ export async function getDigestDetail(digestId: string, userId: string) {
 
   let stageLog: unknown[] = [];
   let sectorsAtSend: string[] = SECTORS.filter((s) => items.some((i) => i.sector === s));
-  const runId = (digest.runMeta as { runId?: string } | null)?.runId;
+  const meta = digest.runMeta as { runId?: string; editorsNote?: string } | null;
+  const runId = meta?.runId;
+  const editorsNote = meta?.editorsNote ?? "";
   if (runId) {
     const [run] = await db.select().from(runs).where(eq(runs.id, runId));
     if (run?.stageLog) {
@@ -46,5 +48,5 @@ export async function getDigestDetail(digestId: string, userId: string) {
     if (itemIds.has(row.digestItemId)) existingFeedback[row.digestItemId] = row.signal;
   }
 
-  return { digest, itemsBySector, rejectionsBySector, existingFeedback };
+  return { digest, editorsNote, itemsBySector, rejectionsBySector, existingFeedback };
 }

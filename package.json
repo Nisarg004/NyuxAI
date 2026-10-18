@@ -13,6 +13,7 @@
     "db:studio": "drizzle-kit studio",
     "digest:test": "tsx scripts/digest-test.ts",
     "watch": "tsx scripts/watch.ts",
+    "landing:test": "tsx scripts/landing-test.ts",
     "test": "node --import tsx --test \"lib/**/*.test.ts\""
   },
   "dependencies": {

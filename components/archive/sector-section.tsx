@@ -14,13 +14,15 @@ type Item = {
 export function SectorSection({
   sector,
   items,
-  rejected,
-  existingFeedback,
+  rejected = [],
+  existingFeedback = {},
+  readOnly = false,
 }: {
   sector: string;
   items: Item[];
-  rejected: { article_id: string; reason: string }[];
-  existingFeedback: Record<string, "up" | "down" | "save">;
+  rejected?: { article_id: string; reason: string }[];
+  existingFeedback?: Record<string, "up" | "down" | "save">;
+  readOnly?: boolean;
 }) {
   const [showRejected, setShowRejected] = useState(false);
 
@@ -51,9 +53,11 @@ export function SectorSection({
                 <span className="font-display italic text-ink">Why it matters — </span>
                 {item.whyItMatters}
               </p>
-              <div className="mt-3">
-                <FeedbackButtons digestItemId={item.id} initial={existingFeedback[item.id] ?? null} />
-              </div>
+              {readOnly ? null : (
+                <div className="mt-3">
+                  <FeedbackButtons digestItemId={item.id} initial={existingFeedback[item.id] ?? null} />
+                </div>
+              )}
             </article>
           ))}
         </div>

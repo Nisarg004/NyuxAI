@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray } from "drizzle-orm";
 import { db } from "../db";
 import { articles, sources } from "../db/schema";
 import { callLLM, type LLMResult } from "../llm";
@@ -17,7 +17,10 @@ export type CandidateArticle = {
   publishedAt: string | null;
 };
 
-export async function fetchCandidateArticles(sectors: string[]): Promise<CandidateArticle[]> {
+export async function fetchCandidateArticles(
+  sectors: string[],
+  limit: number = CANDIDATE_LIMIT,
+): Promise<CandidateArticle[]> {
   const cutoff = new Date(Date.now() - CANDIDATE_WINDOW_MS);
 
   const rows = await db
@@ -32,7 +35,8 @@ export async function fetchCandidateArticles(sectors: string[]): Promise<Candida
     .from(articles)
     .innerJoin(sources, eq(articles.sourceId, sources.id))
     .where(and(inArray(articles.sector, sectors), gte(articles.fetchedAt, cutoff)))
-    .limit(CANDIDATE_LIMIT);
+    .orderBy(desc(articles.publishedAt))
+    .limit(limit);
 
   return rows.map((row) => ({
     ...row,

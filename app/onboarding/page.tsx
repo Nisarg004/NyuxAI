@@ -4,8 +4,20 @@ import { TimezoneField } from "@/components/onboarding/timezone-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SECTORS } from "@/lib/sectors";
 
-export default function OnboardingPage() {
+export default async function OnboardingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ email?: string; role?: string; sectors?: string }>;
+}) {
+  const sp = await searchParams;
+  const prefillEmail = typeof sp.email === "string" ? sp.email : "";
+  const prefillRole = typeof sp.role === "string" ? sp.role : "";
+  const prefillSectors = (typeof sp.sectors === "string" ? sp.sectors.split(",") : [])
+    .map((s) => s.trim())
+    .filter((s) => (SECTORS as readonly string[]).includes(s));
+
   return (
     <main className="mx-auto w-full max-w-md flex-1 px-6 py-16">
       <h1 className="font-display text-4xl font-semibold leading-none tracking-[-0.02em] text-ink">Brieff</h1>
@@ -16,7 +28,7 @@ export default function OnboardingPage() {
       <form action={submitOnboarding} className="mt-10 space-y-6">
         <div className="space-y-1.5">
           <Label htmlFor="email" className="text-ink-soft">Email</Label>
-          <Input id="email" name="email" type="email" required className="rounded-[3px]" />
+          <Input id="email" name="email" type="email" required defaultValue={prefillEmail} className="rounded-[3px]" />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="name" className="text-ink-soft">Name</Label>
@@ -28,6 +40,7 @@ export default function OnboardingPage() {
             id="roleTitle"
             name="roleTitle"
             type="text"
+            defaultValue={prefillRole}
             placeholder="e.g. Product manager"
             className="rounded-[3px]"
           />
@@ -37,7 +50,7 @@ export default function OnboardingPage() {
         </div>
         <div className="space-y-2">
           <Label className="text-ink-soft">Desks to follow</Label>
-          <SectorPicker />
+          <SectorPicker initialSelected={prefillSectors} />
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5">

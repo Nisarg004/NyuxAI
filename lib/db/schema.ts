@@ -9,6 +9,7 @@ import {
   numeric,
   pgEnum,
   uniqueIndex,
+  index,
 } from "drizzle-orm/pg-core";
 
 export const depthEnum = pgEnum("depth", ["brief", "standard", "deep"]);
@@ -128,3 +129,13 @@ export const runs = pgTable("runs", {
   tokenCost: numeric("token_cost"),
   error: text("error"),
 });
+
+export const landingRuns = pgTable(
+  "landing_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ipHash: text("ip_hash").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("landing_runs_ip_hash_created_at_idx").on(t.ipHash, t.createdAt)],
+);

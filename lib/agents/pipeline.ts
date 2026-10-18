@@ -23,6 +23,27 @@ export type GenerateDigestResult =
     }
   | { success: false; runId: string; error: string; stageLog: StageLogEntry[] };
 
+export type BriefContext = {
+  userName: string;
+  roleTitle: string | null;
+  sectors: string[];
+  keywords: string[];
+  feedbackProfile: string | null;
+  depth: "brief" | "standard" | "deep";
+};
+
+export type GenerateBriefResult =
+  | {
+      success: true;
+      runId: string;
+      items: RankedItem[];
+      editorsNote: string;
+      rejected: { article_id: string; reason: string }[];
+      stageLog: StageLogEntry[];
+      curatorSelectedCount: number;
+    }
+  | { success: false; runId: string; error: string; stageLog: StageLogEntry[] };
+
 function now() {
   return new Date().toISOString();
 }
@@ -138,13 +159,19 @@ async function runSectorPipeline(
   }
 }
 
-export async function generateDigest(
-  userId: string,
-  opts: { dryRun: boolean; onStage?: (entry: StageLogEntry) => void; scheduledFor?: Date }
-): Promise<GenerateDigestResult> {
+export async function generateBrief(
+  ctx: BriefContext,
+  opts: {
+    kind: "digest" | "landing";
+    userId: string | null;
+    maxCandidates?: number;
+    maxItemsPerSector?: number;
+    onStage?: (entry: StageLogEntry) => void;
+  },
+): Promise<GenerateBriefResult> {
   const [{ id: runId }] = await db
     .insert(runs)
-    .values({ kind: "digest", userId, status: "running" })
+    .values({ kind: opts.kind, userId: opts.userId, status: "running" })
     .returning({ id: runs.id });
 
   const stageLog: StageLogEntry[] = [];
@@ -158,22 +185,16 @@ export async function generateDigest(
   };
 
   try {
-    const [user] = await db.select().from(users).where(eq(users.id, userId));
-    const [prefs] = await db.select().from(preferences).where(eq(preferences.userId, userId));
-    if (!user || !prefs) {
-      return fail(`No user or preferences found for userId ${userId}`);
-    }
-
     // --- Curator ---
     const curatorStart = Date.now();
-    log({ stage: "curator", event: "start", at: now(), sectors: prefs.sectors });
+    log({ stage: "curator", event: "start", at: now(), sectors: ctx.sectors, candidateLimit: opts.maxCandidates ?? null });
 
-    const candidates = await fetchCandidateArticles(prefs.sectors);
+    const candidates = await fetchCandidateArticles(ctx.sectors, opts.maxCandidates);
     const curatorResult = await runCurator({
-      roleTitle: user.roleTitle,
-      keywords: prefs.keywords,
-      feedbackProfile: prefs.feedbackProfile,
-      sectors: prefs.sectors,
+      roleTitle: ctx.roleTitle,
+      keywords: ctx.keywords,
+      feedbackProfile: ctx.feedbackProfile,
+      sectors: ctx.sectors,
       candidates,
     });
 
@@ -196,7 +217,7 @@ export async function generateDigest(
     if (curatorResult.data.selected.length === 0) {
       log({ stage: "pipeline", event: "finish", at: now(), note: "Curator selected zero articles; nothing to research or write." });
       await db.update(runs).set({ finishedAt: new Date(), status: "completed", stageLog }).where(eq(runs.id, runId));
-      return { success: true, runId, digestId: null, items: [], editorsNote: "", rejected: [], stageLog };
+      return { success: true, runId, items: [], editorsNote: "", rejected: [], stageLog, curatorSelectedCount: 0 };
     }
 
     // --- Researcher ---
@@ -250,9 +271,9 @@ export async function generateDigest(
     const sectorResults = await Promise.all(
       [...bySector.entries()].map(([sector, items]) =>
         runSectorPipeline(sector, items, log, {
-          userName: user.name,
-          roleTitle: user.roleTitle,
-          depth: prefs.depth,
+          userName: ctx.userName,
+          roleTitle: ctx.roleTitle,
+          depth: ctx.depth,
         })
       )
     );
@@ -270,9 +291,6 @@ export async function generateDigest(
 
     const allRejected = sectorResults.flatMap((r) => r.rejected);
 
-    // Rank within each sector by the Curator's original score, highest first.
-    // Keyed lowercase: the Writer/Editor round-trip article_id through two LLM calls,
-    // and a schema-valid UUID can come back in a different case than Postgres stored it.
     const scoreByArticleId = new Map(curatorResult.data.selected.map((s) => [s.article_id, s.score]));
     const urlByArticleId = new Map(researched.map((r) => [r.articleId.toLowerCase(), r.url]));
 
@@ -285,8 +303,6 @@ export async function generateDigest(
       for (const item of sorted) {
         const sourceUrl = urlByArticleId.get(item.article_id.toLowerCase());
         if (!sourceUrl) {
-          // An LLM-echoed article_id that doesn't match any researched article — never ship a
-          // digest item without a resolvable source, so drop it exactly like an Editor rejection.
           allRejected.push({ article_id: item.article_id, reason: "No matching source URL was found for this article_id after the Writer/Editor pass." });
           log({ stage: "pipeline", event: "warning", at: now(), sector: sectorResult.sector, article_id: item.article_id, message: "Dropped item with unresolvable source_url" });
           continue;
@@ -296,13 +312,19 @@ export async function generateDigest(
       return resolved.map((item, idx) => ({ ...item, rank: idx + 1 }));
     });
 
+    // Landing caps the visible items per sector; ranks are already 1-based per sector.
+    const items =
+      opts.maxItemsPerSector !== undefined
+        ? rankedItems.filter((i) => i.rank <= opts.maxItemsPerSector!)
+        : rankedItems;
+
     // --- Cross-sector editors note ---
     let editorsNote = "";
-    if (rankedItems.length > 0) {
+    if (items.length > 0) {
       const noteStart = Date.now();
-      log({ stage: "editors_note", event: "start", at: now(), itemCount: rankedItems.length });
+      log({ stage: "editors_note", event: "start", at: now(), itemCount: items.length });
 
-      const noteResult = await runCrossSectorNote(rankedItems.map((i) => ({ sector: i.sector, headline: i.headline })));
+      const noteResult = await runCrossSectorNote(items.map((i) => ({ sector: i.sector, headline: i.headline })));
 
       if (noteResult.degraded) {
         log({ stage: "editors_note", event: "finish", at: now(), durationMs: Date.now() - noteStart, status: "degraded", error: noteResult.error });
@@ -312,49 +334,9 @@ export async function generateDigest(
       }
     }
 
-    const runStatus = rankedItems.length > 0 || failedSectors.length === 0 ? "completed" : "failed";
+    const runStatus = items.length > 0 || failedSectors.length === 0 ? "completed" : "failed";
 
-    let digestId: string | null = null;
-    if (!opts.dryRun) {
-      const [digest] = await db
-        .insert(digests)
-        .values({
-          userId,
-          scheduledFor: opts.scheduledFor ?? new Date(),
-          status: "ready",
-          runMeta: { runId },
-        })
-        .onConflictDoNothing()
-        .returning({ id: digests.id });
-
-      if (!digest) {
-        // A digest already exists for this exact (user_id, scheduled_for) slot —
-        // the unique index blocked a second insert. Ship nothing: no digest_items,
-        // no email. This is what lets a cron dispatcher retry a slot safely.
-        log({ stage: "pipeline", event: "skipped", at: now(), reason: "digest already exists for this scheduled_for slot" });
-        await db.update(runs).set({ finishedAt: new Date(), status: "completed", stageLog }).where(eq(runs.id, runId));
-        return { success: true, runId, digestId: null, items: [], editorsNote: "", rejected: [], stageLog, skipped: true };
-      }
-
-      digestId = digest.id;
-
-      if (rankedItems.length > 0) {
-        await db.insert(digestItems).values(
-          rankedItems.map((item) => ({
-            digestId: digest.id,
-            articleId: item.article_id,
-            sector: item.sector,
-            headline: item.headline,
-            summary: item.summary,
-            whyItMatters: item.why_it_matters,
-            sourceUrl: item.source_url,
-            rank: item.rank,
-          }))
-        );
-      }
-    }
-
-    log({ stage: "pipeline", event: "finish", at: now(), digestId, itemCount: rankedItems.length, dryRun: opts.dryRun });
+    log({ stage: "pipeline", event: "finish", at: now(), itemCount: items.length, kind: opts.kind });
 
     await db.update(runs).set({ finishedAt: new Date(), status: runStatus, stageLog }).where(eq(runs.id, runId));
 
@@ -362,9 +344,88 @@ export async function generateDigest(
       return { success: false, runId, error: "All sectors failed to produce a digest", stageLog };
     }
 
-    return { success: true, runId, digestId, items: rankedItems, editorsNote, rejected: allRejected, stageLog };
+    return { success: true, runId, items, editorsNote, rejected: allRejected, stageLog, curatorSelectedCount: curatorResult.data.selected.length };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     return fail(error);
   }
+}
+
+export async function generateDigest(
+  userId: string,
+  opts: { dryRun: boolean; onStage?: (entry: StageLogEntry) => void; scheduledFor?: Date }
+): Promise<GenerateDigestResult> {
+  const [user] = await db.select().from(users).where(eq(users.id, userId));
+  const [prefs] = await db.select().from(preferences).where(eq(preferences.userId, userId));
+
+  if (!user || !prefs) {
+    const [{ id: runId }] = await db
+      .insert(runs)
+      .values({ kind: "digest", userId: user ? userId : null, status: "failed" })
+      .returning({ id: runs.id });
+    const error = `No user or preferences found for userId ${userId}`;
+    const stageLog: StageLogEntry[] = [];
+    await db.update(runs).set({ finishedAt: new Date(), status: "failed", stageLog, error }).where(eq(runs.id, runId));
+    return { success: false, runId, error, stageLog };
+  }
+
+  const result = await generateBrief(
+    {
+      userName: user.name,
+      roleTitle: user.roleTitle,
+      sectors: prefs.sectors,
+      keywords: prefs.keywords,
+      feedbackProfile: prefs.feedbackProfile,
+      depth: prefs.depth,
+    },
+    { kind: "digest", userId, onStage: opts.onStage }
+  );
+
+  if (!result.success) return result;
+
+  const { curatorSelectedCount, ...rest } = result;
+
+  let digestId: string | null = null;
+  if (!opts.dryRun && curatorSelectedCount > 0) {
+    const [digest] = await db
+      .insert(digests)
+      .values({
+        userId,
+        scheduledFor: opts.scheduledFor ?? new Date(),
+        status: "ready",
+        runMeta: { runId: result.runId },
+      })
+      .onConflictDoNothing()
+      .returning({ id: digests.id });
+
+    if (!digest) {
+      // A digest already exists for this exact (user_id, scheduled_for) slot —
+      // the unique index blocked a second insert. Ship nothing: no digest_items,
+      // no email. This is what lets a cron dispatcher retry a slot safely.
+      const entry = { stage: "pipeline", event: "skipped", at: new Date().toISOString(), reason: "digest already exists for this scheduled_for slot" };
+      const stageLog = [...rest.stageLog, entry];
+      opts.onStage?.(entry);
+      await db.update(runs).set({ stageLog }).where(eq(runs.id, result.runId));
+      return { success: true, runId: result.runId, digestId: null, items: [], editorsNote: "", rejected: [], stageLog, skipped: true };
+    }
+
+    digestId = digest.id;
+
+    if (rest.items.length > 0) {
+      await db.insert(digestItems).values(
+        rest.items.map((item) => ({
+          digestId: digest.id,
+          articleId: item.article_id,
+          sector: item.sector,
+          headline: item.headline,
+          summary: item.summary,
+          whyItMatters: item.why_it_matters,
+          sourceUrl: item.source_url,
+          rank: item.rank,
+        }))
+      );
+    }
+  }
+
+  return { ...rest, digestId };
 }

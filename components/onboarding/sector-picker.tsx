@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { SECTORS } from "@/lib/sectors";
 
-export function SectorPicker() {
-  const [selected, setSelected] = useState<string[]>([]);
+export function SectorPicker({ initialSelected = [] }: { initialSelected?: string[] }) {
+  const [selected, setSelected] = useState<string[]>(initialSelected);
 
   const toggle = (sector: string) => {
     setSelected((prev) => (prev.includes(sector) ? prev.filter((s) => s !== sector) : [...prev, sector]));

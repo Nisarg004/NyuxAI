@@ -66,7 +66,10 @@ All timestamps are `timestamptz` (`{ withTimezone: true }`).
 
 ## The four-agent pipeline (`lib/agents/*.ts`, orchestrated by `lib/agents/pipeline.ts`)
 
-Entry point: `generateDigest(userId, { dryRun, onStage? })` in `lib/agents/pipeline.ts`.
+Entry point: `generateDigest(userId, { dryRun, onStage?, scheduledFor? })` in
+`lib/agents/pipeline.ts` — a thin wrapper that loads the user's preferences, calls the
+persistence-free core `generateBrief(ctx, { kind, userId, ... })` (also used by the public
+landing route), then inserts `digests` + `digest_items`.
 `onStage` is called with each stage-log entry as it's produced, which is what powers the
 SSE progress stream on `/api/digest/send-now`.
 
@@ -134,7 +137,20 @@ real work — `/api/ingest`, `/api/digest/generate`, `/api/digest/send-now/run`,
 `/api/feedback` — all require `Authorization: Bearer ${CRON_SECRET}` and refuse to do
 anything without it (`isAuthorizedCronCaller`, fails closed if `CRON_SECRET` itself is
 unset). This is what makes it safe to run this app on a public URL with no other auth in
-front of it. The app's own UI never sends that header from the browser:
+front of it.
+
+**One deliberate exception:** `POST /api/landing/brief` runs the pipeline
+(`generateBrief`, `kind: "landing"`) for an anonymous visitor on the public
+landing page and is **not** gated by `isAuthorizedCronCaller` — a stranger has
+no session and no secret. Abuse is bounded instead by `lib/rate-limit.ts`
+(`checkAndRecordLandingRun`: 5 runs/hour/IP, IP hashed with `CRON_SECRET` as
+salt) plus hard caps in the route: ≤3 sectors, ≤3 items/sector, ≤45 candidate
+headlines to the Curator, role text truncated to 120 chars. It persists
+nothing except a `runs` row (`kind: "landing"`, `user_id` null) and a
+`landing_runs` row. No email is sent. This is the only unauthenticated route
+that triggers an LLM call.
+
+The app's own UI never sends the secret header from the browser:
 
 - **Send now**: the browser calls `/api/digest/send-now` (session-cookie-gated, unchanged
   contract). That route resolves `getSessionUserId()`, then re-issues the request to

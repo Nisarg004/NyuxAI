@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { preferences, users } from "@/lib/db/schema";
 import { computeNextRunAt, safeTimezone } from "@/lib/schedule";
-import { setSessionCookie } from "@/lib/session";
+import { requestMagicLink } from "@/lib/auth/magic-link";
 import { SECTORS } from "@/lib/sectors";
 
 export async function submitOnboarding(formData: FormData) {
@@ -21,33 +21,36 @@ export async function submitOnboarding(formData: FormData) {
   }
 
   const [existing] = await db.select().from(users).where(eq(users.email, email));
-  const user = existing ?? (await db.insert(users).values({ email, name, roleTitle }).returning())[0];
 
-  if (existing) {
-    await db.update(users).set({ name, roleTitle }).where(eq(users.id, user.id));
-  }
-
-  const [existingPrefs] = await db.select().from(preferences).where(eq(preferences.userId, user.id));
-
-  // This form does double duty: it's both signup and "log back in with your
-  // email". A returning user must NOT have their real preferences silently
-  // overwritten by whatever happens to be sitting in these fields — the
-  // sector picker starts blank on every page load, so a returning user who
-  // forgets to reselect every sector (or just wants to log back in) would
-  // otherwise have their standing sectors quietly wiped. Preferences are only
-  // ever changed deliberately, via the dashboard's own edit form
-  // (updatePreferences in app/dashboard/actions.ts).
-  if (!existingPrefs) {
+  // Nothing here proves the submitter owns this email, so a verified account
+  // is never touched: its owner gets a sign-in link and nothing else changes.
+  // An account that was never verified can still be re-submitted (a retry by
+  // the same person after an abandoned signup); it can't receive mail until
+  // the link is clicked.
+  if (!existing || !existing.emailVerifiedAt) {
     if (sectors.length === 0) {
       throw new Error("Choose at least one sector");
     }
+    const user = existing ?? (await db.insert(users).values({ email, name, roleTitle }).returning())[0];
+    if (existing) {
+      await db.update(users).set({ name, roleTitle }).where(eq(users.id, user.id));
+    }
+
     const [hour, minute] = time.split(":").map((n) => parseInt(n, 10));
     const deliveryHour = Number.isFinite(hour) ? hour : 20;
     const deliveryMinute = Number.isFinite(minute) ? minute : 0;
-    const nextRunAt = computeNextRunAt(deliveryHour, deliveryMinute, timezone);
-    await db.insert(preferences).values({ userId: user.id, sectors, deliveryHour, deliveryMinute, timezone, nextRunAt, isActive: true });
+    const values = {
+      userId: user.id,
+      sectors,
+      deliveryHour,
+      deliveryMinute,
+      timezone,
+      nextRunAt: computeNextRunAt(deliveryHour, deliveryMinute, timezone),
+      isActive: true,
+    };
+    await db.insert(preferences).values(values).onConflictDoUpdate({ target: preferences.userId, set: values });
   }
 
-  await setSessionCookie(user.id);
-  redirect("/dashboard");
+  const outcome = await requestMagicLink(email, { requireAccount: false });
+  redirect(outcome === "rate_limited" ? "/signin?error=rate" : "/signin?sent=1");
 }

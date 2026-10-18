@@ -132,7 +132,17 @@ prompt on the next run.
 
 ## Auth model for the API routes (`lib/internal-api.ts`)
 
-There's no user auth (deliberately deferred — see CC.md), but the four routes that trigger
+**User sign-in** is passwordless email links (`lib/auth/magic-link.ts`, `lib/session.ts`). Onboarding
+and `/signin` both mail a one-time link (`/auth/verify?token=`, 30 min, max 5/hour/email); the
+page only renders a confirm button and the POST spends the token, so mail scanners that
+prefetch the URL can't burn it. `sessions` / `auth_tokens` store only SHA-256 hashes; the
+`brieff_session` cookie holds the raw random token (30 days). Submitting onboarding for an
+already-verified email never changes that account — it just sends the owner a link. The
+dispatcher skips users with `email_verified_at` null. `users.role = 'admin'` gates `/runs`
+(`requireAdmin`); the migration promoted the earliest-created user. Without `RESEND_API_KEY`
+the link is printed to the server log (local dev/testing).
+
+The four routes that trigger
 real work — `/api/ingest`, `/api/digest/generate`, `/api/digest/send-now/run`, and
 `/api/feedback` — all require `Authorization: Bearer ${CRON_SECRET}` and refuse to do
 anything without it (`isAuthorizedCronCaller`, fails closed if `CRON_SECRET` itself is
@@ -152,7 +162,7 @@ that triggers an LLM call.
 
 The app's own UI never sends the secret header from the browser:
 
-- **Send now**: the browser calls `/api/digest/send-now` (session-cookie-gated, unchanged
+- **Send now**: the browser calls `/api/digest/send-now` (session-gated, unchanged
   contract). That route resolves `getSessionUserId()`, then re-issues the request to
   `/api/digest/send-now/run` with the secret attached, piping the SSE response straight
   back (`getInternalBaseUrl()` prefers Vercel's `VERCEL_URL` over `NEXT_PUBLIC_APP_URL` for

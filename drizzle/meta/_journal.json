@@ -36,6 +36,13 @@
       "when": 1788673538281,
       "tag": "0004_romantic_dark_beast",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792319878226,
+      "tag": "0005_regular_mad_thinker",
+      "breakpoints": true
     }
   ]
 }

@@ -19,7 +19,7 @@ export default function LandingPage() {
           </p>
         </div>
         <Link
-          href="/onboarding"
+          href="/signin"
           className="text-editor underline decoration-editor/40 underline-offset-4 hover:decoration-editor"
         >
           Already set up? Sign in

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { signOut } from "@/app/auth/actions";
 
 const LINKS = [
   { href: "/dashboard", label: "Today's desk", key: "dashboard" as const },
@@ -6,7 +7,7 @@ const LINKS = [
   { href: "/runs", label: "Runs", key: "runs" as const },
 ];
 
-export function Nav({ current }: { current: "dashboard" | "archive" | "runs" }) {
+export function Nav({ current, isAdmin = false }: { current: "dashboard" | "archive" | "runs"; isAdmin?: boolean }) {
   return (
     <header className="border-b border-rule bg-paper">
       <div className="mx-auto flex max-w-5xl items-baseline justify-between gap-6 px-6 py-5">
@@ -14,7 +15,7 @@ export function Nav({ current }: { current: "dashboard" | "archive" | "runs" }) 
           Brieff
         </Link>
         <nav className="flex gap-6 text-sm">
-          {LINKS.map((link) => (
+          {LINKS.filter((link) => link.key !== "runs" || isAdmin).map((link) => (
             <Link
               key={link.key}
               href={link.href}
@@ -28,6 +29,11 @@ export function Nav({ current }: { current: "dashboard" | "archive" | "runs" }) 
               {link.label}
             </Link>
           ))}
+          <form action={signOut}>
+            <button type="submit" className="text-ink-soft transition-colors hover:text-ink">
+              Sign out
+            </button>
+          </form>
         </nav>
       </div>
     </header>

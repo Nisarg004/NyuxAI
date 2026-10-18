@@ -68,6 +68,7 @@ async function fetchDueUsers(asOf: Date): Promise<DueUser[]> {
     .where(
       and(
         eq(preferences.isActive, true),
+        isNotNull(users.emailVerifiedAt),
         isNotNull(preferences.nextRunAt),
         lte(preferences.nextRunAt, asOf)
       )

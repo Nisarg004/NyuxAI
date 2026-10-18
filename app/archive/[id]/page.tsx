@@ -18,7 +18,7 @@ export default async function ArchiveDetailPage({ params }: { params: Promise<{ 
 
   return (
     <>
-      <Nav current="archive" />
+      <Nav current="archive" isAdmin={user.role === "admin"} />
       <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-10">
         <div className="max-w-2xl">
           <header className="border-b border-ink pb-5">

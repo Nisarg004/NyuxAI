@@ -8,6 +8,7 @@ import { FirstBriefCta } from "@/components/dashboard/first-brief-cta";
 import { SendNowPanel } from "@/components/dashboard/send-now-panel";
 import { PastBriefs } from "@/components/dashboard/past-briefs";
 import { PreferencesCard } from "@/components/dashboard/preferences-card";
+import { DeleteAccount } from "@/components/dashboard/delete-account";
 
 export default async function DashboardPage() {
   const { user, preferences } = await requireUser();
@@ -17,7 +18,7 @@ export default async function DashboardPage() {
 
   return (
     <>
-      <Nav current="dashboard" />
+      <Nav current="dashboard" isAdmin={user.role === "admin"} />
       <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-10">
         <div className="max-w-2xl">
           <p className="font-display text-sm italic text-ink-soft">{user.name}&rsquo;s desk</p>
@@ -77,6 +78,10 @@ export default async function DashboardPage() {
               timezone={preferences.timezone}
               depth={preferences.depth}
             />
+          </div>
+
+          <div className="mt-10 border-t border-rule pt-6">
+            <DeleteAccount />
           </div>
         </div>
       </main>

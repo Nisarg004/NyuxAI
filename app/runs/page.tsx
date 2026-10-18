@@ -1,15 +1,15 @@
-import { requireUser } from "@/lib/session";
+import { requireAdmin } from "@/lib/session";
 import { listRuns } from "@/lib/data/runs";
 import { Nav } from "@/components/nav";
 import { RunRow } from "@/components/runs/run-row";
 
 export default async function RunsPage() {
-  const { preferences } = await requireUser();
+  const { preferences } = await requireAdmin();
   const runs = await listRuns();
 
   return (
     <>
-      <Nav current="runs" />
+      <Nav current="runs" isAdmin />
       <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-10">
         <header className="max-w-2xl border-b border-ink pb-5">
           <h1 className="font-display text-[2rem] font-semibold leading-[1.15] tracking-[-0.01em] text-ink">

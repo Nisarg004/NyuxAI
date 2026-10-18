@@ -28,6 +28,7 @@ export default async function RunsPage() {
                 <th className="py-2 pr-4 font-normal">User</th>
                 <th className="py-2 pr-4 font-normal">Started</th>
                 <th className="py-2 pr-4 font-normal">Duration</th>
+                <th className="py-2 pr-4 font-normal">Tokens</th>
                 <th className="py-2 pr-0 font-normal">Status</th>
               </tr>
             </thead>

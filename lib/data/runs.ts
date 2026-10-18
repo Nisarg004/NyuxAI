@@ -12,6 +12,7 @@ export async function listRuns(limit = 50) {
       finishedAt: runs.finishedAt,
       status: runs.status,
       error: runs.error,
+      tokenCost: runs.tokenCost,
       stageLog: runs.stageLog,
     })
     .from(runs)

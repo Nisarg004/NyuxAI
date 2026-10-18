@@ -1,5 +1,6 @@
 import { eq, inArray } from "drizzle-orm";
 import { db } from "../db";
+import { addUsage, ZERO_USAGE, type TokenUsage } from "../llm";
 import { articles, digestItems, digests, preferences, runs, sources, users } from "../db/schema";
 import { fetchCandidateArticles, runCurator } from "./curator";
 import { runEditor, type EditorInput } from "./editor";
@@ -69,7 +70,8 @@ async function runSectorPipeline(
   sector: string,
   items: ResearchedItem[],
   log: (entry: StageLogEntry) => void,
-  writerInput: { userName: string; roleTitle: string | null; depth: "brief" | "standard" | "deep" }
+  writerInput: { userName: string; roleTitle: string | null; depth: "brief" | "standard" | "deep" },
+  track: (usage: TokenUsage) => TokenUsage
 ): Promise<SectorResult> {
   const runAttempt = async (
     attempt: 1 | 2,
@@ -79,9 +81,10 @@ async function runSectorPipeline(
     log({ stage: "writer", event: "start", at: now(), sector, attempt, itemCount: items.length });
 
     const writerResult = await runWriter({ ...writerInput, items, previousRejections });
+    const writerUsage = track(writerResult.usage);
 
     if (writerResult.degraded) {
-      log({ stage: "writer", event: "finish", at: now(), sector, attempt, durationMs: Date.now() - writerStart, status: "degraded", error: writerResult.error });
+      log({ stage: "writer", event: "finish", at: now(), sector, attempt, durationMs: Date.now() - writerStart, status: "degraded", error: writerResult.error, usage: writerUsage });
       return { ok: false, writerError: writerResult.error };
     }
 
@@ -94,6 +97,7 @@ async function runSectorPipeline(
       durationMs: Date.now() - writerStart,
       status: "ok",
       itemCount: writerResult.data.items.length,
+      usage: writerUsage,
     });
 
     const sourceTextByArticleId = new Map(items.map((i) => [i.articleId, i.text]));
@@ -106,9 +110,10 @@ async function runSectorPipeline(
     log({ stage: "editor", event: "start", at: now(), sector, attempt, itemCount: editorInputs.length });
 
     const editorResult = await runEditor(editorInputs);
+    const editorUsage = track(editorResult.usage);
 
     if (editorResult.degraded) {
-      log({ stage: "editor", event: "finish", at: now(), sector, attempt, durationMs: Date.now() - editorStart, status: "degraded", error: editorResult.error });
+      log({ stage: "editor", event: "finish", at: now(), sector, attempt, durationMs: Date.now() - editorStart, status: "degraded", error: editorResult.error, usage: editorUsage });
       return { ok: false, editorError: editorResult.error };
     }
 
@@ -124,6 +129,7 @@ async function runSectorPipeline(
       approvedCount: editorResult.data.approved.length,
       rejectedCount: editorResult.data.rejected.length,
       rejected: editorResult.data.rejected,
+      usage: editorUsage,
     });
 
     return { ok: true, approved: editorResult.data.approved, rejected: editorResult.data.rejected };
@@ -179,8 +185,18 @@ export async function generateBrief(
     stageLog.push(entry);
     opts.onStage?.(entry);
   };
+  // Running total across every LLM call in this run; written to runs.token_cost (total tokens).
+  let usage = ZERO_USAGE;
+  const track = (u: TokenUsage) => {
+    usage = addUsage(usage, u);
+    return u;
+  };
+  const tokenCost = () => String(usage.totalTokens);
   const fail = async (error: string) => {
-    await db.update(runs).set({ finishedAt: new Date(), status: "failed", stageLog, error }).where(eq(runs.id, runId));
+    await db
+      .update(runs)
+      .set({ finishedAt: new Date(), status: "failed", stageLog, error, tokenCost: tokenCost() })
+      .where(eq(runs.id, runId));
     return { success: false as const, runId, error, stageLog };
   };
 
@@ -198,8 +214,10 @@ export async function generateBrief(
       candidates,
     });
 
+    const curatorUsage = track(curatorResult.usage);
+
     if (curatorResult.degraded) {
-      log({ stage: "curator", event: "finish", at: now(), durationMs: Date.now() - curatorStart, status: "degraded", error: curatorResult.error });
+      log({ stage: "curator", event: "finish", at: now(), durationMs: Date.now() - curatorStart, status: "degraded", error: curatorResult.error, usage: curatorUsage });
       return fail(`Curator failed: ${curatorResult.error}`);
     }
 
@@ -209,6 +227,7 @@ export async function generateBrief(
       at: now(),
       durationMs: Date.now() - curatorStart,
       status: "ok",
+      usage: curatorUsage,
       candidateCount: candidates.length,
       selectedCount: curatorResult.data.selected.length,
       selections: curatorResult.data.selected.map((s) => ({ article_id: s.article_id, sector: s.sector, score: s.score, reason: s.reason })),
@@ -216,7 +235,7 @@ export async function generateBrief(
 
     if (curatorResult.data.selected.length === 0) {
       log({ stage: "pipeline", event: "finish", at: now(), note: "Curator selected zero articles; nothing to research or write." });
-      await db.update(runs).set({ finishedAt: new Date(), status: "completed", stageLog }).where(eq(runs.id, runId));
+      await db.update(runs).set({ finishedAt: new Date(), status: "completed", stageLog, tokenCost: tokenCost() }).where(eq(runs.id, runId));
       return { success: true, runId, items: [], editorsNote: "", rejected: [], stageLog, curatorSelectedCount: 0 };
     }
 
@@ -274,7 +293,7 @@ export async function generateBrief(
           userName: ctx.userName,
           roleTitle: ctx.roleTitle,
           depth: ctx.depth,
-        })
+        }, track)
       )
     );
 
@@ -325,20 +344,21 @@ export async function generateBrief(
       log({ stage: "editors_note", event: "start", at: now(), itemCount: items.length });
 
       const noteResult = await runCrossSectorNote(items.map((i) => ({ sector: i.sector, headline: i.headline })));
+      const noteUsage = track(noteResult.usage);
 
       if (noteResult.degraded) {
-        log({ stage: "editors_note", event: "finish", at: now(), durationMs: Date.now() - noteStart, status: "degraded", error: noteResult.error });
+        log({ stage: "editors_note", event: "finish", at: now(), durationMs: Date.now() - noteStart, status: "degraded", error: noteResult.error, usage: noteUsage });
       } else {
         editorsNote = noteResult.data.editors_note;
-        log({ stage: "editors_note", event: "finish", at: now(), durationMs: Date.now() - noteStart, status: "ok" });
+        log({ stage: "editors_note", event: "finish", at: now(), durationMs: Date.now() - noteStart, status: "ok", usage: noteUsage });
       }
     }
 
     const runStatus = items.length > 0 || failedSectors.length === 0 ? "completed" : "failed";
 
-    log({ stage: "pipeline", event: "finish", at: now(), itemCount: items.length, kind: opts.kind });
+    log({ stage: "pipeline", event: "finish", at: now(), itemCount: items.length, kind: opts.kind, usage });
 
-    await db.update(runs).set({ finishedAt: new Date(), status: runStatus, stageLog }).where(eq(runs.id, runId));
+    await db.update(runs).set({ finishedAt: new Date(), status: runStatus, stageLog, tokenCost: tokenCost() }).where(eq(runs.id, runId));
 
     if (runStatus === "failed") {
       return { success: false, runId, error: "All sectors failed to produce a digest", stageLog };

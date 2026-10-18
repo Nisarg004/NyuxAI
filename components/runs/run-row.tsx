@@ -12,6 +12,7 @@ type Run = {
   finishedAt: Date | null;
   status: string;
   error: string | null;
+  tokenCost: string | null;
   stageLog: unknown;
 };
 
@@ -41,13 +42,16 @@ export function RunRow({ run, timezone }: { run: Run; timezone: string }) {
         <td className="py-2.5 pr-4 text-sm text-ink-soft">
           {durationMs !== null ? `${(durationMs / 1000).toFixed(1)}s` : "running"}
         </td>
+        <td className="py-2.5 pr-4 text-sm tabular-nums text-ink-soft">
+          {run.tokenCost !== null ? Number(run.tokenCost).toLocaleString("en-US") : "—"}
+        </td>
         <td className="py-2.5 pr-0">
           <StatusBadge status={run.status} />
         </td>
       </tr>
       {open ? (
         <tr className="border-b border-rule bg-paper-deep/30">
-          <td colSpan={5} className="px-1 py-4 text-sm">
+          <td colSpan={6} className="px-1 py-4 text-sm">
             {run.error ? <p className="mb-3 text-editor">{run.error}</p> : null}
             {summary ? (
               <div className="space-y-4">

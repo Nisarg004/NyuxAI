@@ -50,6 +50,13 @@
       "when": 1792320200366,
       "tag": "0006_outstanding_leper_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792321350814,
+      "tag": "0007_redundant_barracuda",
+      "breakpoints": true
     }
   ]
 }

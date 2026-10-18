@@ -30,7 +30,8 @@ cp .env.example .env.local   # then fill in the values below
 | `MODEL_FAST` | Model id for the Curator, Editor, editor's-note, and feedback-profile calls |
 | `JINA_API_KEY` | Optional. Sent as a bearer token to `r.jina.ai` for full-text fetches; the Researcher works without it, just at a lower rate limit |
 | `RESEND_API_KEY` | Resend API key, used to send digest emails |
-| `CRON_SECRET` | Bearer token for the write routes (`/api/ingest`, `/api/digest/*`, `/api/feedback`) and the cron dispatcher (`/api/cron/dispatch`). Fails closed if unset |
+| `RESEND_WEBHOOK_SECRET` | Signing secret (`whsec_…`) of the Resend webhook pointed at `/api/webhooks/resend`. The route returns 503 until set. Subscribe it to `email.bounced` and `email.complained` |
+| `CRON_SECRET` | Bearer token for the write routes (`/api/ingest`, `/api/digest/*`, `/api/feedback`) and the cron dispatcher (`/api/cron/dispatch`). Also the HMAC key (derived) for signed email links, so rotating it invalidates unsubscribe links already sent. Fails closed if unset |
 | `NEXT_PUBLIC_APP_URL` | Base URL used to build links inside sent emails (e.g. `http://localhost:3000`) |
 
 Both `MODEL_WRITER` and `MODEL_FAST` are required at import time — `lib/agents/models.ts`

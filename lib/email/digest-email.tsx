@@ -30,6 +30,7 @@ export type DigestEmailProps = {
   sectorGroups: DigestEmailSector[];
   archiveUrl: string;
   preferencesUrl: string;
+  unsubscribeUrl: string;
 };
 
 function SectorTag({ label }: { label: string }) {
@@ -63,6 +64,7 @@ export function DigestEmail({
   sectorGroups,
   archiveUrl,
   preferencesUrl,
+  unsubscribeUrl,
 }: DigestEmailProps) {
   return (
     <Html>
@@ -225,6 +227,10 @@ export function DigestEmail({
               {"  ·  "}
               <Link href={preferencesUrl} style={{ color: INK, fontWeight: 600, textDecoration: "underline" }}>
                 Manage preferences
+              </Link>
+              {"  ·  "}
+              <Link href={unsubscribeUrl} style={{ color: INK, fontWeight: 600, textDecoration: "underline" }}>
+                Unsubscribe
               </Link>
             </Text>
             <Text style={{ fontFamily: MONO, fontSize: "11px", color: "#9AA0B4", margin: 0 }}>BRIEFF</Text>

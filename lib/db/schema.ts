@@ -24,6 +24,8 @@ export const digestStatusEnum = pgEnum("digest_status", [
 export const feedbackSignalEnum = pgEnum("feedback_signal", ["up", "down", "save"]);
 
 export const userRoleEnum = pgEnum("user_role", ["user", "admin"]);
+// Set by the Resend webhook; anything other than "ok" means we must not email this address.
+export const emailStatusEnum = pgEnum("email_status", ["ok", "bounced", "complained"]);
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -32,6 +34,8 @@ export const users = pgTable("users", {
   roleTitle: text("role_title"),
   role: userRoleEnum("role").notNull().default("user"),
   emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+  emailStatus: emailStatusEnum("email_status").notNull().default("ok"),
+  emailStatusUpdatedAt: timestamp("email_status_updated_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

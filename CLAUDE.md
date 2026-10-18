@@ -210,6 +210,25 @@ proxy/action if the browser needs to reach it.
    (~360 lines) is the natural exception as the one place that has to know about every
    stage.
 
+## Cost tracking and email compliance
+
+**Cost.** `callLLM` returns `usage` (prompt/completion/total tokens, summed across both
+attempts, including failed ones). `generateBrief` accumulates it into `runs.token_cost`
+(total tokens) and puts `usage` on each stage's `finish` entry in `stage_log`; `/runs`
+shows a Tokens column. Transient 429/5xx/connection errors are retried with exponential
+backoff + jitter in `lib/retry.ts` (SDK retries are disabled so they don't multiply).
+
+**Email compliance.** `lib/signed-link.ts` makes stateless HMAC tokens bound to a purpose
+(key derived from `CRON_SECRET`; throws if unset). Every digest email carries a footer
+unsubscribe link (`/unsubscribe?t=`, a confirm page — a GET never acts, so scanners can't
+unsubscribe anyone) plus `List-Unsubscribe` / `List-Unsubscribe-Post` headers pointing at
+`POST /api/unsubscribe?t=` (RFC 8058 one-click). Both set `preferences.is_active = false`.
+`POST /api/webhooks/resend` (Svix signature, `RESEND_WEBHOOK_SECRET`, 503 until set) sets
+`users.email_status` to `bounced` (permanent bounces only) or `complained`; the dispatcher
+and `/api/digest/send-now/run` skip any user whose status isn't `ok`. All sends go through
+`lib/email/send.ts`, which logs instead of sending when `RESEND_API_KEY` is empty. There is
+no UI yet to resume an unsubscribed user (Phase 3 settings).
+
 ## The cron dispatcher (Phase 6)
 
 `runDispatch` (`lib/cron/dispatch.ts`), exposed as `POST /api/cron/dispatch`

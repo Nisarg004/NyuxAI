@@ -3,7 +3,8 @@ import { db } from "@/lib/db";
 import { digests, preferences, users } from "@/lib/db/schema";
 import { generateDigest } from "@/lib/agents/pipeline";
 import { renderDigestEmail } from "@/lib/email/render";
-import { resend, EMAIL_FROM } from "@/lib/email/client";
+import { sendEmail } from "@/lib/email/send";
+import { unsubscribeHeaders, unsubscribePageUrl } from "@/lib/unsubscribe";
 import { isAuthorizedCronCaller } from "@/lib/internal-api";
 import type { DigestEmailItem, DigestEmailSector } from "@/lib/email/digest-email";
 
@@ -96,6 +97,14 @@ export async function POST(request: Request) {
           return;
         }
 
+        // A bounced/complained address must never be mailed again. Checked before the
+        // pipeline so a suppressed user also costs no LLM tokens.
+        if (user.emailStatus !== "ok") {
+          send({ type: "done", runId: null, digestId: null, sent: false, note: `Email address is suppressed (${user.emailStatus}); skipping.` });
+          controller.close();
+          return;
+        }
+
         const result = await generateDigest(userId, {
           dryRun: false,
           onStage: (entry) => send({ type: "stage", entry }),
@@ -129,15 +138,16 @@ export async function POST(request: Request) {
           sectorGroups: groupBySector(prefs.sectors, result.items),
           archiveUrl: `${APP_URL}/archive/${result.digestId}`,
           preferencesUrl: `${APP_URL}/dashboard`,
+          unsubscribeUrl: unsubscribePageUrl(userId),
         });
 
         send({ type: "stage", entry: { stage: "email", event: "start", at: new Date().toISOString(), to: user.email } });
 
-        const sendResult = await resend.emails.send({ from: EMAIL_FROM, to: user.email, subject, html });
+        const sendResult = await sendEmail({ to: user.email, subject, html, headers: unsubscribeHeaders(userId) });
 
-        if (sendResult.error) {
-          send({ type: "stage", entry: { stage: "email", event: "finish", status: "failed", error: sendResult.error.message } });
-          send({ type: "error", runId: result.runId, digestId: result.digestId, error: `Email send failed: ${sendResult.error.message}` });
+        if (!sendResult.ok) {
+          send({ type: "stage", entry: { stage: "email", event: "finish", status: "failed", error: sendResult.error } });
+          send({ type: "error", runId: result.runId, digestId: result.digestId, error: `Email send failed: ${sendResult.error}` });
           controller.close();
           return;
         }
@@ -145,7 +155,7 @@ export async function POST(request: Request) {
         const sentAt = new Date();
         await db.update(digests).set({ sentAt, status: "sent", subject, html }).where(eq(digests.id, result.digestId));
 
-        send({ type: "stage", entry: { stage: "email", event: "finish", at: sentAt.toISOString(), status: "ok", to: user.email, emailId: sendResult.data?.id } });
+        send({ type: "stage", entry: { stage: "email", event: "finish", at: sentAt.toISOString(), status: "ok", to: user.email, emailId: sendResult.id } });
         send({ type: "done", runId: result.runId, digestId: result.digestId, sent: true, sentTo: user.email, subject });
         controller.close();
       } catch (err) {

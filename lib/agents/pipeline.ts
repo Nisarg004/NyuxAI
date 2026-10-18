@@ -2,7 +2,8 @@ import { eq, inArray } from "drizzle-orm";
 import { db } from "../db";
 import { addUsage, ZERO_USAGE, type TokenUsage } from "../llm";
 import { articles, digestItems, digests, preferences, runs, sources, users } from "../db/schema";
-import { fetchCandidateArticles, runCurator } from "./curator";
+import { profileQuery, selectCandidates } from "./candidates";
+import { runCurator } from "./curator";
 import { ensureBriefs } from "./article-brief";
 import { applyDepth } from "./depth";
 import { personalizeWhyItMatters } from "./personalizer";
@@ -103,7 +104,13 @@ export async function generateBrief(
     const curatorStart = Date.now();
     log({ stage: "curator", event: "start", at: now(), sectors: ctx.sectors, candidateLimit: opts.maxCandidates ?? null });
 
-    const candidates = await fetchCandidateArticles(ctx.sectors, opts.maxCandidates);
+    const selected = await selectCandidates({
+      sectors: ctx.sectors,
+      queryText: profileQuery({ roleTitle: ctx.roleTitle, keywords: ctx.keywords, feedbackProfile: ctx.feedbackProfile }),
+      limit: opts.maxCandidates,
+    });
+    const candidates = selected.candidates;
+    const prefilterUsage = track(selected.usage);
     const curatorResult = await runCurator({
       roleTitle: ctx.roleTitle,
       keywords: ctx.keywords,
@@ -128,6 +135,10 @@ export async function generateBrief(
       status: "ok",
       usage: curatorUsage,
       candidateCount: candidates.length,
+      rawCount: selected.stats.rawCount,
+      storyCount: selected.stats.storyCount,
+      prefiltered: selected.stats.prefiltered,
+      prefilterUsage,
       selectedCount: curatorResult.data.selected.length,
       selections: curatorResult.data.selected.map((s) => ({ article_id: s.article_id, sector: s.sector, score: s.score, reason: s.reason })),
     });

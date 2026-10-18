@@ -7,6 +7,11 @@ import { withBackoff } from "./retry";
 // Retries are owned by withBackoff below; the SDK's built-in retries would multiply them.
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 0 });
 
+export const EMBEDDING_MODEL = process.env.MODEL_EMBEDDING || "text-embedding-3-small";
+// Small vectors keep rows and in-memory similarity cheap; plenty for matching same-event articles.
+export const EMBEDDING_DIMENSIONS = 256;
+const EMBEDDING_BATCH = 100;
+
 export type TokenUsage = { promptTokens: number; completionTokens: number; totalTokens: number };
 
 export const ZERO_USAGE: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
@@ -104,4 +109,28 @@ export async function callLLM<Schema extends ZodType>(params: {
   }
 
   return { ok: false, degraded: true, error: second.error, usage };
+}
+
+export type EmbedResult = { ok: true; vectors: number[][]; usage: TokenUsage } | { ok: false; error: string; usage: TokenUsage };
+
+// The embeddings counterpart of callLLM, and likewise the only place that talks to the provider:
+// batches the inputs, retries transient errors with backoff, never throws. Vectors come back in
+// input order.
+export async function embedTexts(texts: string[]): Promise<EmbedResult> {
+  const vectors: number[][] = [];
+  let usage = ZERO_USAGE;
+  try {
+    for (let i = 0; i < texts.length; i += EMBEDDING_BATCH) {
+      const input = texts.slice(i, i + EMBEDDING_BATCH);
+      const res = await withBackoff(() =>
+        // Short per-request timeout: a stalled connection should fail fast into withBackoff, not block for minutes.
+        client.embeddings.create({ model: EMBEDDING_MODEL, input, dimensions: EMBEDDING_DIMENSIONS }, { timeout: 30_000 }),
+      );
+      for (const item of [...res.data].sort((a, b) => a.index - b.index)) vectors.push(item.embedding);
+      usage = addUsage(usage, { promptTokens: res.usage.prompt_tokens, completionTokens: 0, totalTokens: res.usage.total_tokens });
+    }
+    return { ok: true, vectors, usage };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err), usage };
+  }
 }

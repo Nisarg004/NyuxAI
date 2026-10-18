@@ -9,6 +9,7 @@ import {
   jsonb,
   numeric,
   pgEnum,
+  real,
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
@@ -97,6 +98,21 @@ export const sources = pgTable("sources", {
   consecutiveFailures: integer("consecutive_failures").notNull().default(0),
 });
 
+// A story is a cluster of articles, across outlets, about the same event within ~48h.
+// `canonical_article_id` is the first article seen; later ones are matched against its embedding.
+export const stories = pgTable(
+  "stories",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sector: text("sector").notNull(),
+    canonicalArticleId: uuid("canonical_article_id"),
+    articleCount: integer("article_count").notNull().default(1),
+    firstSeen: timestamp("first_seen", { withTimezone: true }).notNull().defaultNow(),
+    lastUpdated: timestamp("last_updated", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("stories_sector_last_updated_idx").on(t.sector, t.lastUpdated)],
+);
+
 export const articles = pgTable("articles", {
   id: uuid("id").primaryKey().defaultRandom(),
   sourceId: uuid("source_id")
@@ -112,7 +128,13 @@ export const articles = pgTable("articles", {
   fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
   fullText: text("full_text"),
   fullTextFetchedAt: timestamp("full_text_fetched_at", { withTimezone: true }),
+  // Title+excerpt embedding (EMBEDDING_DIMENSIONS floats) and the story it was clustered into.
+  // Plain real[] with similarity computed in app code: a 48h window is ~1.5k articles, far
+  // below where an ANN index (pgvector) starts to matter.
+  embedding: real("embedding").array(),
+  storyId: uuid("story_id").references(() => stories.id, { onDelete: "set null" }),
 }, (t) => [
+  index("articles_story_id_idx").on(t.storyId),
   index("articles_sector_fetched_at_idx").on(t.sector, t.fetchedAt),
   index("articles_source_id_idx").on(t.sourceId),
 ]);

@@ -1,48 +1,10 @@
-import { and, desc, eq, gte, inArray } from "drizzle-orm";
-import { db } from "../db";
-import { articles, sources } from "../db/schema";
 import { callLLM, type LLMResult } from "../llm";
 import { MODEL_FAST } from "./models";
+import type { CandidateArticle } from "./candidates";
 import { curatorOutputSchema, type CuratorOutput } from "./schemas";
 
-const CANDIDATE_WINDOW_MS = 24 * 60 * 60 * 1000;
-const CANDIDATE_LIMIT = 150;
-
-export type CandidateArticle = {
-  id: string;
-  title: string;
-  excerpt: string | null;
-  sector: string;
-  source: string;
-  publishedAt: string | null;
-};
-
-export async function fetchCandidateArticles(
-  sectors: string[],
-  limit: number = CANDIDATE_LIMIT,
-): Promise<CandidateArticle[]> {
-  const cutoff = new Date(Date.now() - CANDIDATE_WINDOW_MS);
-
-  const rows = await db
-    .select({
-      id: articles.id,
-      title: articles.title,
-      excerpt: articles.excerpt,
-      sector: articles.sector,
-      publishedAt: articles.publishedAt,
-      source: sources.name,
-    })
-    .from(articles)
-    .innerJoin(sources, eq(articles.sourceId, sources.id))
-    .where(and(inArray(articles.sector, sectors), gte(articles.fetchedAt, cutoff)))
-    .orderBy(desc(articles.publishedAt))
-    .limit(limit);
-
-  return rows.map((row) => ({
-    ...row,
-    publishedAt: row.publishedAt ? row.publishedAt.toISOString() : null,
-  }));
-}
+// Longer excerpts cost tokens on every candidate without changing what the Curator picks.
+const EXCERPT_CHARS = 240;
 
 export async function runCurator(input: {
   roleTitle: string | null;
@@ -55,7 +17,7 @@ export async function runCurator(input: {
 }): Promise<LLMResult<CuratorOutput>> {
   const system = [
     "You are the Curator agent in a news briefing pipeline.",
-    "Given a reader profile and a pool of candidate articles, first mentally dedupe near-identical stories covered by multiple outlets (keep the best single version).",
+    "Given a reader profile and a pool of candidate articles, each already de-duplicated to one article per story (`covered_by` is how many outlets reported it — wider coverage is a mild signal of importance, never a reason to pick an article that is irrelevant to this reader).",
     "Then score each remaining article 0-100 for relevance to this specific reader.",
     `Return the top ${input.perSector ?? 5} articles per sector, ranked by score.`,
     "The `reason` field must be one short clause explaining the score — it is shown to the reader in a run log, so make it specific to this article and this reader, not generic.",
@@ -71,7 +33,8 @@ export async function runCurator(input: {
     candidates: input.candidates.map((c) => ({
       id: c.id,
       title: c.title,
-      excerpt: c.excerpt,
+      excerpt: c.excerpt?.slice(0, EXCERPT_CHARS) ?? null,
+      covered_by: c.outlets,
       sector: c.sector,
       source: c.source,
       published_at: c.publishedAt,

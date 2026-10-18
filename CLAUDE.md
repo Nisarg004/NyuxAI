@@ -53,7 +53,12 @@ All timestamps are `timestamptz` (`{ withTimezone: true }`).
   `published_at`, `excerpt`, `content_hash` (unique), `fetched_at`, plus `full_text` and
   `full_text_fetched_at` (also not in CC.md's original schema — the Researcher's cache of
   `r.jina.ai` output lives in the `articles` row itself, not just in-memory, so repeat runs
-  over the same article never re-fetch)
+  over the same article never re-fetch), `embedding` (`real[]`) and `story_id` (fk, set null)
+- **`stories`** — `id`, `sector`, `canonical_article_id`, `article_count`, `first_seen`,
+  `last_updated`: a cross-outlet cluster of articles about one event (see "Story clustering")
+- **`article_briefs`** — one shared, Editor-verified brief per article (`headline`, `summary`,
+  `why_it_matters`, `key_facts`, `verified`, `editor_notes`, `research_depth`, `model`)
+- **`jobs`** — the generate/send work queue (see "The job queue and cron dispatcher")
 - **`digests`** — `id`, `user_id` (fk), `scheduled_for`, `sent_at`, `status`
   (`pending|generating|ready|sent|failed`), `subject`, `html`, `run_meta` (jsonb). Unique
   index on `(user_id, scheduled_for)`.
@@ -73,12 +78,32 @@ landing route), then inserts `digests` + `digest_items`.
 `onStage` is called with each stage-log entry as it's produced, which is what powers the
 SSE progress stream on `/api/digest/send-now`.
 
+**Story clustering** (`lib/story-index.ts`, `lib/clustering.ts`; tables `stories`, `articles.embedding`
+/ `articles.story_id`). After the feed loop, `runIngest` calls `indexRecentArticles`: it embeds
+(`embedTexts` in `lib/llm.ts`, `text-embedding-3-small` at 256 dims, override with `MODEL_EMBEDDING`)
+any article from the last 48h that has no embedding, then assigns each un-storied article to a story
+or opens a new one. It works from "recent articles still missing X", so a failed run is finished by
+the next; a failure is logged to the ingest `stage_log` and never fails ingestion. Similarity is
+computed in app code over `real[]` columns (a 48h window is ~1.5k rows), so no pgvector. Matching
+is against each story's canonical (first-seen) article, and is two-tier because embeddings alone
+can't tell "same event" from "same template" (ICICI vs HDFC results score 0.83, real duplicates
+0.80-0.82): `>= 0.88` merges outright; `0.76-0.88` merges only if the titles share a specific token
+(a 3+ digit number or a distinctive capitalised name, `specificTokens`). Merging distinct events
+is worse than leaving a near-duplicate, so it errs towards separate stories. Retention nulls
+embeddings and deletes stories older than 14 days.
+
+**Candidates** (`lib/agents/candidates.ts`). `selectCandidates` builds the Curator's pool from the
+last 24h: one representative per story (fullest excerpt) with `outlets` (distinct sources), then the
+best 16 per sector, ranked by embedding similarity to the reader (`profileQuery`: role, keywords,
+feedback profile; one ~10-token embedding call) or, with no profile, by outlet count then recency.
+Un-embedded articles rank last rather than vanish. Replaces the old "newest 150 total".
+
 **Curator** (`lib/agents/curator.ts`, `MODEL_FAST`). Input: `roleTitle`, `keywords`,
-`feedbackProfile`, `sectors`, and up to 150 candidate articles from the last 24h in those
-sectors (`fetchCandidateArticles`) — each `{ id, title, excerpt, sector, source,
-publishedAt }`. Output (`curatorOutputSchema`): `{ selected: [{ article_id, sector, score
-(0–100), reason }] }`. Prompted to dedupe near-identical stories and return the top 5 per
-sector; `reason` is one short clause, surfaced in `/runs`.
+`feedbackProfile`, `sectors`, and the pool above, each `{ id, title, excerpt (240 chars), sector,
+source, covered_by, publishedAt }`. Output (`curatorOutputSchema`): `{ selected: [{ article_id, sector,
+score (0-100), reason }] }`. Returns the top `perSector` per sector (the pipeline over-selects, see
+below); `reason` is one short clause, surfaced in `/runs`. Measured on the dev DB: Curator input
+fell from ~25.9k to ~2.4k tokens (a warm role-tuned digest: ~30k -> ~10.5k total).
 
 **Researcher** (`lib/agents/researcher.ts`, no LLM). For each selected article: check
 `articles.full_text` in the DB first; if cached, reuse it (`depth: "deep"`) with no

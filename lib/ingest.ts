@@ -5,6 +5,7 @@ import { db } from "./db";
 import { articles, runs, sources } from "./db/schema";
 import { runWithConcurrency } from "./concurrency";
 import { runRetention, type RetentionResult } from "./retention";
+import { indexRecentArticles, type StoryIndexResult } from "./story-index";
 
 const CONCURRENCY = 8;
 const MAX_ARTICLE_AGE_MS = 48 * 60 * 60 * 1000;
@@ -40,6 +41,7 @@ type IngestEntry =
       failedFeeds: { name: string; error: string }[];
       disabledSources: string[];
     }
+  | ({ stage: "story_index"; event: "finish"; at: string } & Partial<StoryIndexResult> & { status?: "failed"; error?: string })
   | ({ stage: "retention"; event: "finish"; at: string } & RetentionResult);
 
 type StageLogEntry = FeedEntry | IngestEntry;
@@ -176,6 +178,17 @@ export async function runIngest(): Promise<IngestResult> {
       failedFeeds,
       disabledSources,
     });
+
+    // Embedding/clustering enriches articles but must never fail ingestion: the next run finishes
+    // whatever this one could not (it works from "recent articles still missing an embedding").
+    try {
+      const index = await indexRecentArticles();
+      stageLog.push({ stage: "story_index", event: "finish", at: new Date().toISOString(), ...index, usage: index.usage });
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      console.error(`[ingest] story indexing failed (run ${runId}):`, err);
+      stageLog.push({ stage: "story_index", event: "finish", at: new Date().toISOString(), status: "failed", error });
+    }
 
     stageLog.push({ stage: "retention", event: "finish", at: new Date().toISOString(), ...(await runRetention()) });
 

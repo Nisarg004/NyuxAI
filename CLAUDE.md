@@ -14,6 +14,29 @@ Hanken Grotesk, no monospace, "desk"/"edition" language) — this superseded an 
 dark-mode/amber direction described in CC.md's Phase 5 section; treat that section as
 historical.
 
+## Commands
+
+```bash
+npm run dev              # start the app (http://localhost:3000)
+npm run build            # production build
+npm run lint             # eslint
+npm test                 # node --test over lib/**/*.test.ts (needs DATABASE_URL — see below)
+node --import tsx --test lib/cron/dispatch.test.ts   # run a single test file
+
+npm run db:generate      # regenerate Drizzle migrations from lib/db/schema.ts
+npm run db:migrate       # apply migrations to DATABASE_URL
+npm run db:seed          # replace all `sources` rows from lib/db/candidate-sources.ts
+npm run db:studio        # browse the DB
+
+npm run digest:test <userId>   # run the full pipeline for one user, dry-run, no auth needed
+npm run watch             # poll /api/cron/dispatch every 60s against BASE_URL (demo mode)
+```
+
+`MODEL_WRITER` and `MODEL_FAST` env vars are required at import time (`lib/agents/models.ts`
+throws if either is unset). `lib/cron/dispatch.test.ts` needs a reachable `DATABASE_URL` —
+it fails with a Postgres connection error, not a logic error, if the DB isn't reachable
+(e.g. no local Postgres, or a stale/pooler-only connection string).
+
 ## Database schema (`lib/db/schema.ts`)
 
 All timestamps are `timestamptz` (`{ withTimezone: true }`).

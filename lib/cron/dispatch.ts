@@ -2,45 +2,45 @@ import { and, eq, isNotNull, lte } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { preferences, users } from "@/lib/db/schema";
 import { cronSecretHeader, getInternalBaseUrl } from "@/lib/internal-api";
+import { enqueueJob, runnableJobCount } from "@/lib/jobs/queue";
 import { computeNextRunAt } from "@/lib/schedule";
 
 /**
- * The Phase 6 scheduler. `runDispatch` finds every active user whose
- * `preferences.next_run_at` is due, and for each one:
+ * The scheduler's enqueue half. `runDispatch` finds every active user whose delivery
+ * slot is at most LEAD_MS away and, for each one:
  *
- *  1. Atomically claims the slot — a conditional
- *     `UPDATE preferences SET next_run_at = <tomorrow's slot>
+ *  1. Enqueues a `generate` job for that slot (idempotent per user + slot).
+ *  2. Atomically claims the slot — a conditional
+ *     `UPDATE preferences SET next_run_at = <the following slot>
  *      WHERE user_id = ? AND next_run_at = <the exact value we just read>`.
- *     If another dispatcher (a second GitHub Actions run, or `npm run watch`
- *     firing while the previous tick is still working) already rolled that
- *     row forward, this UPDATE matches zero rows and we skip the user. This
- *     is the primary double-send guard; `claimDueRun` is unit-tested for the
- *     concurrent case in `dispatch.test.ts`.
- *  2. Loops back into `/api/digest/send-now/run` with the CRON_SECRET and the
- *     due slot as `scheduledFor`. That route runs the pipeline and sends the
- *     email; passing `scheduledFor` makes the `digests (user_id, scheduled_for)`
- *     unique index the backstop guard against a true simultaneous race.
+ *     If another dispatcher already rolled that row forward, the UPDATE matches zero
+ *     rows. Enqueue-then-claim means a crash between the two can only cause a harmless
+ *     duplicate enqueue (a no-op on the unique index), never a lost slot.
  *
- * `next_run_at` is rolled forward BEFORE the pipeline runs, so a user whose
- * pipeline fails is not retried every 15 minutes forever — the failure is
- * recorded in a `runs` row and they get the next day's brief as normal.
+ * It does no LLM work itself and returns in well under a second per user. The
+ * `generate` job builds the digest ahead of time; when it finishes it enqueues a
+ * `send` job due at the slot itself (lib/jobs/handlers.ts), so a 07:00 rush is
+ * absorbed by generation that already happened between 06:15 and 07:00. Workers
+ * (/api/jobs/worker) drain the queue; `fanOutWorkers` starts several in parallel.
  *
- * Users are processed sequentially (LLM rate limits, and the route's 300s
- * budget). `durationMs` is reported so the ceiling stays visible as the user
- * count grows.
+ * Generating early also means a slot is claimed before it is delivered. That is safe
+ * because a job killed mid-run has an expired lease and is retried (lib/jobs/queue.ts),
+ * which fixes the old "claimed, then killed, so no brief" failure mode.
  */
+
+export const LEAD_MS = 45 * 60 * 1000;
 
 export type DispatchUserResult = {
   email: string;
   claimed: boolean;
-  sent: boolean;
+  enqueued: boolean;
   note?: string;
-  error?: string;
 };
 
 export type DispatchResult = {
   due: number;
   processed: DispatchUserResult[];
+  runnableJobs: number;
   durationMs: number;
 };
 
@@ -53,7 +53,7 @@ type DueUser = {
   timezone: string;
 };
 
-async function fetchDueUsers(asOf: Date): Promise<DueUser[]> {
+async function fetchDueUsers(horizon: Date): Promise<DueUser[]> {
   const rows = await db
     .select({
       userId: preferences.userId,
@@ -71,7 +71,7 @@ async function fetchDueUsers(asOf: Date): Promise<DueUser[]> {
         eq(users.emailStatus, "ok"),
         isNotNull(users.emailVerifiedAt),
         isNotNull(preferences.nextRunAt),
-        lte(preferences.nextRunAt, asOf)
+        lte(preferences.nextRunAt, horizon)
       )
     );
 
@@ -101,120 +101,56 @@ export async function claimDueRun(
   return claimed.length > 0;
 }
 
-// Drains the SSE stream from /api/digest/send-now/run and returns the terminal
-// event (a `done` or `error`), or null if the stream ended without one.
-async function drainRunStream(
-  body: ReadableStream<Uint8Array>
-): Promise<Record<string, unknown> | null> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let terminal: Record<string, unknown> | null = null;
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-
-    let boundary = buffer.indexOf("\n\n");
-    while (boundary !== -1) {
-      const frame = buffer.slice(0, boundary);
-      buffer = buffer.slice(boundary + 2);
-      boundary = buffer.indexOf("\n\n");
-
-      const dataLine = frame
-        .split("\n")
-        .find((line) => line.startsWith("data:"));
-      if (!dataLine) continue;
-
-      try {
-        const event = JSON.parse(dataLine.slice(5).trim()) as Record<string, unknown>;
-        if (event.type === "done" || event.type === "error") {
-          terminal = event;
-        }
-      } catch {
-        // A malformed frame is not fatal — keep reading for the terminal event.
-      }
-    }
-  }
-
-  return terminal;
-}
-
-async function runPipelineFor(
-  user: DueUser,
-  baseUrl: string
-): Promise<{ sent: boolean; note?: string; error?: string }> {
-  let response: Response;
-  try {
-    response = await fetch(`${baseUrl}/api/digest/send-now/run`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...cronSecretHeader() },
-      body: JSON.stringify({
-        userId: user.userId,
-        scheduledFor: user.dueRunAt.toISOString(),
-      }),
-    });
-  } catch (err) {
-    return { sent: false, error: err instanceof Error ? err.message : String(err) };
-  }
-
-  if (!response.ok || !response.body) {
-    return { sent: false, error: `send-now/run responded ${response.status}` };
-  }
-
-  const terminal = await drainRunStream(response.body);
-  if (!terminal) {
-    return { sent: false, error: "stream ended without a terminal event" };
-  }
-  if (terminal.type === "error") {
-    return { sent: false, error: String(terminal.error ?? "unknown pipeline error") };
-  }
-  return {
-    sent: Boolean(terminal.sent),
-    note: typeof terminal.note === "string" ? terminal.note : undefined,
-  };
-}
-
-export async function runDispatch(opts: {
-  baseUrl?: string;
-  now?: Date;
-} = {}): Promise<DispatchResult> {
+export async function runDispatch(opts: { now?: Date; leadMs?: number } = {}): Promise<DispatchResult> {
   const startedAt = Date.now();
-  const asOf = opts.now ?? new Date();
-  // Loop back through the same base URL the app uses for its other
-  // server-to-server calls — the production alias, never the per-deployment
-  // hostname (which Vercel Deployment Protection gates). See lib/internal-api.ts.
-  const baseUrl = opts.baseUrl ?? getInternalBaseUrl();
-  const dueUsers = await fetchDueUsers(asOf);
+  const now = opts.now ?? new Date();
+  const dueUsers = await fetchDueUsers(new Date(now.getTime() + (opts.leadMs ?? LEAD_MS)));
   const processed: DispatchUserResult[] = [];
 
   for (const user of dueUsers) {
-    const nextRunAt = computeNextRunAt(
-      user.deliveryHour,
-      user.deliveryMinute,
-      user.timezone,
-      asOf
-    );
+    // The slot after this one — computed from the slot itself, not from `now`, because
+    // with lead time the current slot may still be in the future.
+    const nextRunAt = computeNextRunAt(user.deliveryHour, user.deliveryMinute, user.timezone, user.dueRunAt);
 
+    const enqueued = await enqueueJob({ kind: "generate", userId: user.userId, scheduledFor: user.dueRunAt, runAfter: now });
     const claimed = await claimDueRun(user.userId, user.dueRunAt, nextRunAt);
-    if (!claimed) {
-      processed.push({
-        email: user.email,
-        claimed: false,
-        sent: false,
-        note: "slot already claimed by a concurrent dispatch",
-      });
-      continue;
-    }
-
-    const outcome = await runPipelineFor(user, baseUrl);
-    processed.push({ email: user.email, claimed: true, ...outcome });
+    processed.push({
+      email: user.email,
+      claimed,
+      enqueued,
+      ...(claimed ? {} : { note: "slot already claimed by a concurrent dispatch" }),
+    });
   }
 
-  return {
-    due: dueUsers.length,
-    processed,
-    durationMs: Date.now() - startedAt,
-  };
+  return { due: dueUsers.length, processed, runnableJobs: await runnableJobCount(), durationMs: Date.now() - startedAt };
+}
+
+/**
+ * Starts up to `max` parallel worker invocations, each a separate serverless function
+ * that drains the queue (so throughput scales with the fan-out instead of being capped
+ * by one 300s request). Sized to the runnable backlog so an idle tick costs nothing.
+ * Meant to run inside `after()` of the dispatch route: it outlives the response and
+ * resolves when every worker has finished.
+ */
+export async function fanOutWorkers(opts: { runnableJobs: number; max?: number; baseUrl?: string }): Promise<number> {
+  // `||` not `??`: an empty WORKER_FANOUT (as in .env.example) parses to 0 and must mean "default".
+  const max = opts.max ?? (Number(process.env.WORKER_FANOUT) || 4);
+  const workers = Math.min(max, opts.runnableJobs);
+  if (workers <= 0) return 0;
+
+  const baseUrl = opts.baseUrl ?? getInternalBaseUrl();
+  await Promise.allSettled(
+    Array.from({ length: workers }, async () => {
+      try {
+        const res = await fetch(`${baseUrl}/api/jobs/worker`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...cronSecretHeader() },
+        });
+        if (!res.ok) console.error(`[dispatch] worker invocation responded ${res.status}`);
+      } catch (err) {
+        console.error(`[dispatch] worker invocation failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }),
+  );
+  return workers;
 }

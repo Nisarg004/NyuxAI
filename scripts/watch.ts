@@ -4,7 +4,8 @@ config({ path: ".env.local" });
 /**
  * A local stand-in for the GitHub Actions cron (.github/workflows/dispatch.yml),
  * for demos where that cron's 5-15 minute lateness would be a problem. Polls
- * POST /api/cron/dispatch every 60s and prints what it did.
+ * POST /api/cron/dispatch every 60s and prints what it queued. The server starts
+ * the workers itself (see app/api/cron/dispatch/route.ts), so this is all a demo needs.
  *
  *   npm run watch                                  # -> http://localhost:3000
  *   BASE_URL=https://brieff-nine.vercel.app npm run watch
@@ -25,7 +26,8 @@ type DispatchResponse = {
   success: boolean;
   due?: number;
   durationMs?: number;
-  processed?: { email: string; claimed: boolean; sent: boolean; note?: string; error?: string }[];
+  runnableJobs?: number;
+  processed?: { email: string; claimed: boolean; enqueued: boolean; note?: string }[];
   error?: string;
 };
 
@@ -53,21 +55,12 @@ async function tick(): Promise<void> {
   const body = (await res.json()) as DispatchResponse;
   const took = body.durationMs != null ? ` (${(body.durationMs / 1000).toFixed(1)}s)` : "";
 
-  if (!body.due) {
-    console.log(`[${stamp()}] 0 due${took}`);
-    return;
-  }
-
+  // The dispatcher only enqueues; workers it starts in the background do the generating
+  // and sending. Each tick also picks up send jobs that have come due since the last one.
+  console.log(`[${stamp()}] ${body.due ?? 0} due, ${body.runnableJobs ?? 0} runnable job(s)${took}`);
   for (const p of body.processed ?? []) {
-    if (p.error) {
-      console.log(`[${stamp()}] error for ${p.email}: ${p.error}${took}`);
-    } else if (!p.claimed) {
-      console.log(`[${stamp()}] ${p.email}: ${p.note ?? "already claimed"}${took}`);
-    } else if (p.sent) {
-      console.log(`[${stamp()}] sending for ${p.email}${took}`);
-    } else {
-      console.log(`[${stamp()}] ${p.email}: ${p.note ?? "nothing to send"}${took}`);
-    }
+    const state = p.claimed ? "queued" : (p.note ?? "already claimed");
+    console.log(`[${stamp()}]   ${p.email}: ${state}`);
   }
 }
 

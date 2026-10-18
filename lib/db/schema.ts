@@ -23,6 +23,9 @@ export const digestStatusEnum = pgEnum("digest_status", [
 ]);
 export const feedbackSignalEnum = pgEnum("feedback_signal", ["up", "down", "save"]);
 
+export const jobKindEnum = pgEnum("job_kind", ["generate", "send"]);
+export const jobStatusEnum = pgEnum("job_status", ["pending", "running", "done", "failed"]);
+
 export const userRoleEnum = pgEnum("user_role", ["user", "admin"]);
 // Set by the Resend webhook; anything other than "ok" means we must not email this address.
 export const emailStatusEnum = pgEnum("email_status", ["ok", "bounced", "complained"]);
@@ -177,4 +180,31 @@ export const landingRuns = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("landing_runs_ip_hash_created_at_idx").on(t.ipHash, t.createdAt)],
+);
+
+// The work queue the dispatcher fills and /api/jobs/worker drains. A job is claimed by
+// flipping pending -> running with a lease (`locked_until`); a worker that dies leaves an
+// expired lease, which makes the job claimable again until `attempts` hits the cap.
+export const jobs = pgTable(
+  "jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    kind: jobKindEnum("kind").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // The delivery slot this job belongs to — the same value as digests.scheduled_for.
+    scheduledFor: timestamp("scheduled_for", { withTimezone: true }).notNull(),
+    status: jobStatusEnum("status").notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    runAfter: timestamp("run_after", { withTimezone: true }).notNull().defaultNow(),
+    lockedUntil: timestamp("locked_until", { withTimezone: true }),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("jobs_kind_user_slot_idx").on(t.kind, t.userId, t.scheduledFor),
+    index("jobs_status_run_after_idx").on(t.status, t.runAfter),
+  ],
 );

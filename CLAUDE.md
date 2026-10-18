@@ -7,9 +7,9 @@ Writer → Editor) builds a sourced daily brief per user, sent by email and read
 with a thumbs up/down feedback loop that reshapes future curation. Full original build
 spec (phases 1–7): `files/CC.md`. Phases 1–7 are built. Phase 6 (cron scheduler) was
 skipped for a long time and then added: `POST /api/cron/dispatch` reads `next_run_at`,
-fires `/api/digest/send-now/run` per due user, and rolls the slot forward;
+enqueues a generate job per due user and rolls the slot forward (workers do the work);
 `.github/workflows/dispatch.yml` polls it every 15 min and `npm run watch` polls it every
-60s for demos. See "The cron dispatcher" below. The current UI is a warm-newsprint/ink/oxblood editorial design (Fraunces +
+60s for demos. See "The job queue and cron dispatcher" below. The current UI is a warm-newsprint/ink/oxblood editorial design (Fraunces +
 Hanken Grotesk, no monospace, "desk"/"edition" language) — this superseded an earlier
 dark-mode/amber direction described in CC.md's Phase 5 section; treat that section as
 historical.
@@ -167,7 +167,7 @@ The app's own UI never sends the secret header from the browser:
   `/api/digest/send-now/run` with the secret attached, piping the SSE response straight
   back (`getInternalBaseUrl()` prefers Vercel's `VERCEL_URL` over `NEXT_PUBLIC_APP_URL` for
   this loopback call). `/run` is the one that actually executes the pipeline and sends
-  email, and is the one a future Phase 6 cron dispatcher would call directly.
+  email, and is used by the interactive Send now flow only (scheduled sends go through the job queue).
 - **Feedback**: the browser calls the `submitFeedback` Server Action
   (`app/archive/actions.ts`), not `/api/feedback` directly. The action resolves the
   session, then does the same secret-attached server-to-server call.
@@ -229,35 +229,46 @@ and `/api/digest/send-now/run` skip any user whose status isn't `ok`. All sends 
 `lib/email/send.ts`, which logs instead of sending when `RESEND_API_KEY` is empty. There is
 no UI yet to resume an unsubscribed user (Phase 3 settings).
 
-## The cron dispatcher (Phase 6)
+## The job queue and cron dispatcher (Phase 6 + 2.1)
 
-`runDispatch` (`lib/cron/dispatch.ts`), exposed as `POST /api/cron/dispatch`
-(`isAuthorizedCronCaller`-gated, `maxDuration = 300`):
+Scheduled delivery is a queue (`jobs` table, `lib/jobs/*`) so throughput scales with the
+number of parallel workers instead of one 300s request. Three pieces:
 
-1. Selects `preferences` rows where `is_active` and `next_run_at <= now()`, joined to
-   `users` for the email.
-2. Per user, **atomically claims the slot**: `claimDueRun` runs
-   `UPDATE preferences SET next_run_at = <computeNextRunAt(...)> WHERE user_id = ? AND
-   next_run_at = <the exact value just read>` and returns whether it matched a row. A
-   second concurrent dispatcher (overlapping GitHub Actions run, or `npm run watch` firing
-   mid-pipeline) matches zero rows and skips the user. This is the primary double-send
-   guard; `lib/cron/dispatch.test.ts` races two claims against one DB row to prove it.
-3. Loops back into `/api/digest/send-now/run` with `cronSecretHeader()` and
-   `scheduledFor` = the due slot, drains the SSE stream, records the terminal event.
-   Passing `scheduledFor` makes `generateDigest` insert the `digests` row with that exact
-   timestamp and `.onConflictDoNothing()`, so the `(user_id, scheduled_for)` unique index
-   is the backstop guard — a true simultaneous race that somehow passes step 2 still can't
-   double-insert. `generateDigest` returns `{ ..., skipped: true }` in that case.
+1. **Dispatcher** — `runDispatch` (`lib/cron/dispatch.ts`), `POST /api/cron/dispatch`
+   (`isAuthorizedCronCaller`-gated). Enqueue-only, returns in milliseconds. For every
+   active, verified, non-suppressed user whose `next_run_at` is within `LEAD_MS` (45 min):
+   enqueue a `generate` job for that slot, then atomically claim the slot (`claimDueRun`:
+   `UPDATE preferences SET next_run_at = <following slot> WHERE user_id = ? AND
+   next_run_at = <exact value read>`). Enqueue-then-claim, so a crash between them can only
+   cause a no-op duplicate enqueue (unique index `(kind, user_id, scheduled_for)`), never a
+   lost slot. The following slot is computed from the slot itself, not from `now`. Then
+   `after(() => fanOutWorkers(...))` starts up to `WORKER_FANOUT` (default 4) parallel
+   `POST /api/jobs/worker` invocations, sized to the runnable backlog.
+2. **Worker** — `POST /api/jobs/worker` (`runWorker`, `lib/jobs/worker.ts`). Loops claiming
+   small batches until the queue is empty or <90s of the 300s budget remain. `claimJobs`
+   (`lib/jobs/queue.ts`) is one `UPDATE … WHERE id IN (SELECT … FOR UPDATE SKIP LOCKED)`:
+   pending-and-due jobs, or running jobs whose lease (`locked_until`, 6 min) expired because
+   their worker died. `attempts` is bumped on claim; at 3 a job is failed, not retried.
+   Handler failures retry with backoff (`failJob`).
+3. **Handlers** (`lib/jobs/handlers.ts`). `generate`: re-checks the recipient (active, not
+   suppressed), skips generation if a digest for the slot already exists (retry-safe), runs
+   `generateDigest(..., scheduledFor: slot)`, then enqueues a `send` job with
+   `run_after = slot`. `send`: re-checks the recipient (they may have unsubscribed in the
+   45 min window), then `deliverDigest` (`lib/email/deliver.ts`), which renders from the
+   stored `digests`/`digest_items` rows and is idempotent (already-sent digests are skipped).
 
-`next_run_at` is rolled forward *before* the pipeline runs, so a user whose pipeline fails
-isn't retried every 15 minutes forever (the failure is in a `runs` row; they get tomorrow's
-brief). Users are processed sequentially; the JSON response includes `durationMs` so the
-300s ceiling stays visible as the user count grows.
+"Generate early, send on time": briefs are built between 45 and 0 minutes before the slot;
+the email goes out on the first dispatch tick at/after the slot. The digest and its items
+are inserted in one transaction, with `(user_id, scheduled_for)` unique as the backstop.
+The interactive send-now route (`/api/digest/send-now/run`) bypasses the queue: it runs
+`generateDigest` + `deliverDigest` inline and streams stage events over SSE.
 
 **Triggers**: `.github/workflows/dispatch.yml` (`*/15 * * * *` + `workflow_dispatch`) curls
-the deployed route — needs repo secrets `DISPATCH_URL` (production base URL) and
-`CRON_SECRET`. `npm run watch` (`scripts/watch.ts`) polls the same route every 60s against
-`BASE_URL` (default `http://localhost:3000`) for demos where Actions' lateness is too slow.
+the deployed dispatch route — needs repo secrets `DISPATCH_URL` and `CRON_SECRET`.
+`npm run watch` (`scripts/watch.ts`) polls it every 60s against `BASE_URL` for demos.
+Tests: `lib/jobs/queue.test.ts` (race, lease expiry, attempt cap), `lib/jobs/worker.test.ts`
+(lead window, send-on-slot, unsubscribed-in-window), `lib/cron/dispatch.test.ts` (CAS race).
+DB tests that run a worker must pass `userIds` so they never claim real jobs.
 
 ## Not built
 

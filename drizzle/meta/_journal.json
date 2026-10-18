@@ -57,6 +57,13 @@
       "when": 1792321350814,
       "tag": "0007_redundant_barracuda",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792321566629,
+      "tag": "0008_unique_doctor_octopus",
+      "breakpoints": true
     }
   ]
 }

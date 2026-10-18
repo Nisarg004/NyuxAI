@@ -407,18 +407,39 @@ export async function generateDigest(
 
   let digestId: string | null = null;
   if (!opts.dryRun && curatorSelectedCount > 0) {
-    const [digest] = await db
-      .insert(digests)
-      .values({
-        userId,
-        scheduledFor: opts.scheduledFor ?? new Date(),
-        status: "ready",
-        runMeta: { runId: result.runId, editorsNote: rest.editorsNote },
-      })
-      .onConflictDoNothing()
-      .returning({ id: digests.id });
+    // Digest and items land together or not at all: a crash between the two inserts must not
+    // leave an empty digest that a retry would then see as "already generated".
+    const inserted = await db.transaction(async (tx) => {
+      const [digest] = await tx
+        .insert(digests)
+        .values({
+          userId,
+          scheduledFor: opts.scheduledFor ?? new Date(),
+          status: "ready",
+          runMeta: { runId: result.runId, editorsNote: rest.editorsNote },
+        })
+        .onConflictDoNothing()
+        .returning({ id: digests.id });
+      if (!digest) return null;
 
-    if (!digest) {
+      if (rest.items.length > 0) {
+        await tx.insert(digestItems).values(
+          rest.items.map((item) => ({
+            digestId: digest.id,
+            articleId: item.article_id,
+            sector: item.sector,
+            headline: item.headline,
+            summary: item.summary,
+            whyItMatters: item.why_it_matters,
+            sourceUrl: item.source_url,
+            rank: item.rank,
+          }))
+        );
+      }
+      return digest;
+    });
+
+    if (!inserted) {
       // A digest already exists for this exact (user_id, scheduled_for) slot —
       // the unique index blocked a second insert. Ship nothing: no digest_items,
       // no email. This is what lets a cron dispatcher retry a slot safely.
@@ -429,22 +450,7 @@ export async function generateDigest(
       return { success: true, runId: result.runId, digestId: null, items: [], editorsNote: "", rejected: [], stageLog, skipped: true };
     }
 
-    digestId = digest.id;
-
-    if (rest.items.length > 0) {
-      await db.insert(digestItems).values(
-        rest.items.map((item) => ({
-          digestId: digest.id,
-          articleId: item.article_id,
-          sector: item.sector,
-          headline: item.headline,
-          summary: item.summary,
-          whyItMatters: item.why_it_matters,
-          sourceUrl: item.source_url,
-          rank: item.rank,
-        }))
-      );
-    }
+    digestId = inserted.id;
   }
 
   return { ...rest, digestId };

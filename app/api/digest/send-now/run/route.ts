@@ -1,43 +1,14 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { digests, preferences, users } from "@/lib/db/schema";
+import { preferences, users } from "@/lib/db/schema";
 import { generateDigest } from "@/lib/agents/pipeline";
-import { renderDigestEmail } from "@/lib/email/render";
-import { sendEmail } from "@/lib/email/send";
-import { unsubscribeHeaders, unsubscribePageUrl } from "@/lib/unsubscribe";
+import { deliverDigest } from "@/lib/email/deliver";
 import { isAuthorizedCronCaller } from "@/lib/internal-api";
-import type { DigestEmailItem, DigestEmailSector } from "@/lib/email/digest-email";
-
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
 // The actual pipeline + email send; a multi-sector user's run has taken over
 // 40s even for 2 sectors in live testing. 300s is Vercel's ceiling on Hobby
 // (with Fluid Compute) — set explicitly, not left as an implicit default.
 export const maxDuration = 300;
-
-// Seeds every sector the user is subscribed to, not just the ones with items —
-// a sector that approved nothing still gets an explicit empty entry so the
-// template can say so rather than silently omitting the section.
-function groupBySector(
-  sectors: string[],
-  items: { sector: string; headline: string; summary: string; why_it_matters: string; source_url: string }[]
-): DigestEmailSector[] {
-  const bySector = new Map<string, DigestEmailItem[]>();
-  for (const sector of sectors) {
-    bySector.set(sector, []);
-  }
-
-  for (const item of items) {
-    bySector.get(item.sector)?.push({
-      headline: item.headline,
-      summary: item.summary,
-      whyItMatters: item.why_it_matters,
-      sourceUrl: item.source_url,
-    });
-  }
-
-  return sectors.map((sector) => ({ sector, items: bySector.get(sector) ?? [] }));
-}
 
 // Requires the CRON_SECRET bearer token — see lib/internal-api.ts. This is the
 // endpoint that actually runs the pipeline and sends email; it takes userId
@@ -129,34 +100,25 @@ export async function POST(request: Request) {
           return;
         }
 
-        const { html, subject } = await renderDigestEmail({
-          userName: user.name,
-          sentAt: new Date(),
-          timezone: prefs.timezone,
-          sectors: prefs.sectors,
-          editorsNote: result.editorsNote,
-          sectorGroups: groupBySector(prefs.sectors, result.items),
-          archiveUrl: `${APP_URL}/archive/${result.digestId}`,
-          preferencesUrl: `${APP_URL}/dashboard`,
-          unsubscribeUrl: unsubscribePageUrl(userId),
-        });
-
         send({ type: "stage", entry: { stage: "email", event: "start", at: new Date().toISOString(), to: user.email } });
 
-        const sendResult = await sendEmail({ to: user.email, subject, html, headers: unsubscribeHeaders(userId) });
+        const delivery = await deliverDigest(result.digestId);
 
-        if (!sendResult.ok) {
-          send({ type: "stage", entry: { stage: "email", event: "finish", status: "failed", error: sendResult.error } });
-          send({ type: "error", runId: result.runId, digestId: result.digestId, error: `Email send failed: ${sendResult.error}` });
+        if (delivery.status === "failed") {
+          send({ type: "stage", entry: { stage: "email", event: "finish", status: "failed", error: delivery.error } });
+          send({ type: "error", runId: result.runId, digestId: result.digestId, error: `Email send failed: ${delivery.error}` });
           controller.close();
           return;
         }
 
-        const sentAt = new Date();
-        await db.update(digests).set({ sentAt, status: "sent", subject, html }).where(eq(digests.id, result.digestId));
+        if (delivery.status === "skipped") {
+          send({ type: "done", runId: result.runId, digestId: result.digestId, sent: false, note: `Not sent: ${delivery.reason}.` });
+          controller.close();
+          return;
+        }
 
-        send({ type: "stage", entry: { stage: "email", event: "finish", at: sentAt.toISOString(), status: "ok", to: user.email, emailId: sendResult.id } });
-        send({ type: "done", runId: result.runId, digestId: result.digestId, sent: true, sentTo: user.email, subject });
+        send({ type: "stage", entry: { stage: "email", event: "finish", at: delivery.sentAt.toISOString(), status: "ok", to: delivery.to, emailId: delivery.emailId } });
+        send({ type: "done", runId: result.runId, digestId: result.digestId, sent: true, sentTo: delivery.to, subject: delivery.subject });
         controller.close();
       } catch (err) {
         const error = err instanceof Error ? err.message : String(err);

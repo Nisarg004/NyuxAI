@@ -32,6 +32,7 @@ cp .env.example .env.local   # then fill in the values below
 | `RESEND_API_KEY` | Resend API key, used to send digest emails |
 | `RESEND_WEBHOOK_SECRET` | Signing secret (`whsec_…`) of the Resend webhook pointed at `/api/webhooks/resend`. The route returns 503 until set. Subscribe it to `email.bounced` and `email.complained` |
 | `CRON_SECRET` | Bearer token for the write routes (`/api/ingest`, `/api/digest/*`, `/api/feedback`) and the cron dispatcher (`/api/cron/dispatch`). Also the HMAC key (derived) for signed email links, so rotating it invalidates unsubscribe links already sent. Fails closed if unset |
+| `WORKER_FANOUT` | Optional. Max parallel `/api/jobs/worker` invocations the dispatcher starts per tick (default 4). Each runs ~2 digests at a time, so this bounds delivery throughput |
 | `NEXT_PUBLIC_APP_URL` | Base URL used to build links inside sent emails (e.g. `http://localhost:3000`) |
 
 Both `MODEL_WRITER` and `MODEL_FAST` are required at import time — `lib/agents/models.ts`

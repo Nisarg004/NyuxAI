@@ -50,9 +50,8 @@ test(
   "dispatcher skips bounced and complained users but still picks up healthy ones",
   { skip: DB_AVAILABLE ? false : "DATABASE_URL not set" },
   async () => {
-    // Unreachable base URL: the pipeline call fails fast, which is fine — this test
-    // only asserts who the dispatcher chooses, not what happens after.
-    const result = await runDispatch({ now: NOW, baseUrl: "http://127.0.0.1:1" });
+    // Enqueue-only, so nothing runs; this asserts only who the dispatcher chooses.
+    const result = await runDispatch({ now: NOW, leadMs: 0 });
     const emails = result.processed.map((p) => p.email);
 
     assert.ok(emails.includes(OK_EMAIL), "healthy due user must be dispatched");

@@ -1,11 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { isAuthorizedCronCaller } from "@/lib/internal-api";
-import { runDispatch } from "@/lib/cron/dispatch";
+import { fanOutWorkers, runDispatch } from "@/lib/cron/dispatch";
 
-// Fans out to /api/digest/send-now/run once per due user, sequentially. Each of
-// those can take well over a minute; 300s is Vercel's ceiling on Hobby (with
-// Fluid Compute). The response reports `durationMs` so the ceiling stays
-// visible as the user count grows — see lib/cron/dispatch.ts.
+// Enqueue-only: finds due users, queues their jobs and returns within seconds. The
+// actual generation and sending happens in /api/jobs/worker invocations that this
+// route starts in `after()`, which keeps running for up to maxDuration after the
+// response and waits on all of them.
 export const maxDuration = 300;
 
 // Requires the CRON_SECRET bearer token — see lib/internal-api.ts. Called by
@@ -16,5 +16,6 @@ export async function POST(request: Request) {
   }
 
   const result = await runDispatch();
+  after(() => fanOutWorkers({ runnableJobs: result.runnableJobs }));
   return NextResponse.json({ success: true, ...result });
 }

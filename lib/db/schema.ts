@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   pgTable,
   uuid,
@@ -77,7 +78,7 @@ export const preferences = pgTable("preferences", {
   feedbackProfileUpdatedAt: timestamp("feedback_profile_updated_at", { withTimezone: true }),
   nextRunAt: timestamp("next_run_at", { withTimezone: true }),
   isActive: boolean("is_active").notNull().default(true),
-});
+}, (t) => [index("preferences_due_idx").on(t.nextRunAt).where(sql`${t.isActive}`)]);
 
 export const sources = pgTable("sources", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -104,7 +105,10 @@ export const articles = pgTable("articles", {
   fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
   fullText: text("full_text"),
   fullTextFetchedAt: timestamp("full_text_fetched_at", { withTimezone: true }),
-});
+}, (t) => [
+  index("articles_sector_fetched_at_idx").on(t.sector, t.fetchedAt),
+  index("articles_source_id_idx").on(t.sourceId),
+]);
 
 export const digests = pgTable(
   "digests",
@@ -135,7 +139,7 @@ export const digestItems = pgTable("digest_items", {
   whyItMatters: text("why_it_matters").notNull(),
   sourceUrl: text("source_url").notNull(),
   rank: integer("rank").notNull(),
-});
+}, (t) => [index("digest_items_digest_id_idx").on(t.digestId)]);
 
 export const feedback = pgTable("feedback", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -147,7 +151,7 @@ export const feedback = pgTable("feedback", {
     .references(() => digestItems.id, { onDelete: "cascade" }),
   signal: feedbackSignalEnum("signal").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [index("feedback_user_created_at_idx").on(t.userId, t.createdAt)]);
 
 export const runs = pgTable("runs", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -159,7 +163,7 @@ export const runs = pgTable("runs", {
   stageLog: jsonb("stage_log"),
   tokenCost: numeric("token_cost"),
   error: text("error"),
-});
+}, (t) => [index("runs_started_at_idx").on(t.startedAt)]);
 
 export const landingRuns = pgTable(
   "landing_runs",

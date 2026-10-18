@@ -43,6 +43,13 @@
       "when": 1792319878226,
       "tag": "0005_regular_mad_thinker",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792320200366,
+      "tag": "0006_outstanding_leper_queen",
+      "breakpoints": true
     }
   ]
 }

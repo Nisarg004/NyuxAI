@@ -1,0 +1,29 @@
+name: ingest
+
+# Pulls every active RSS source into the articles table. The Curator only reads
+# the last 24h of articles, so without this running briefs come out empty.
+# Takes ~70s+ per run; every 30 minutes keeps the candidate pool fresh.
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: POST /api/ingest
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --max-time 320 \
+            -X POST "${DISPATCH_URL%/}/api/ingest" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json"
+        env:
+          DISPATCH_URL: ${{ secrets.DISPATCH_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}

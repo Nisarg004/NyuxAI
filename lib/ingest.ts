@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { db } from "./db";
 import { articles, runs, sources } from "./db/schema";
 import { runWithConcurrency } from "./concurrency";
+import { runRetention, type RetentionResult } from "./retention";
 
 const CONCURRENCY = 8;
 const MAX_ARTICLE_AGE_MS = 48 * 60 * 60 * 1000;
@@ -38,7 +39,8 @@ type IngestEntry =
       skipped: number;
       failedFeeds: { name: string; error: string }[];
       disabledSources: string[];
-    };
+    }
+  | ({ stage: "retention"; event: "finish"; at: string } & RetentionResult);
 
 type StageLogEntry = FeedEntry | IngestEntry;
 
@@ -144,46 +146,46 @@ export async function runIngest(): Promise<IngestResult> {
     .values({ kind: "ingest", status: "running" })
     .returning({ id: runs.id });
 
-  const activeSources = await db.select().from(sources).where(eq(sources.isActive, true));
+  const stageLog: StageLogEntry[] = [];
+  try {
+    const activeSources = await db.select().from(sources).where(eq(sources.isActive, true));
+    stageLog.push({ stage: "ingest", event: "start", at: new Date().toISOString(), sourceCount: activeSources.length });
 
-  const stageLog: StageLogEntry[] = [
-    { stage: "ingest", event: "start", at: new Date().toISOString(), sourceCount: activeSources.length },
-  ];
+    const feedEntries: FeedEntry[] = [];
+    await runWithConcurrency(activeSources, CONCURRENCY, async (source) => {
+      const entry = await fetchAndPersistFeed(source);
+      feedEntries.push(entry);
+    });
+    stageLog.push(...feedEntries);
 
-  const feedEntries: FeedEntry[] = [];
-  await runWithConcurrency(activeSources, CONCURRENCY, async (source) => {
-    const entry = await fetchAndPersistFeed(source);
-    feedEntries.push(entry);
-  });
-  stageLog.push(...feedEntries);
+    const fetched = feedEntries.reduce((sum, e) => sum + (e.fetched ?? 0), 0);
+    const inserted = feedEntries.reduce((sum, e) => sum + (e.inserted ?? 0), 0);
+    const skipped = feedEntries.reduce((sum, e) => sum + (e.skipped ?? 0), 0);
+    const failedFeeds = feedEntries
+      .filter((e) => e.status === "failed")
+      .map((e) => ({ name: e.source, error: e.error ?? "unknown error" }));
+    const disabledSources = feedEntries.filter((e) => e.disabled).map((e) => e.source);
 
-  const fetched = feedEntries.reduce((sum, e) => sum + (e.fetched ?? 0), 0);
-  const inserted = feedEntries.reduce((sum, e) => sum + (e.inserted ?? 0), 0);
-  const skipped = feedEntries.reduce((sum, e) => sum + (e.skipped ?? 0), 0);
-  const failedFeeds = feedEntries
-    .filter((e) => e.status === "failed")
-    .map((e) => ({ name: e.source, error: e.error ?? "unknown error" }));
-  const disabledSources = feedEntries.filter((e) => e.disabled).map((e) => e.source);
+    stageLog.push({
+      stage: "ingest",
+      event: "finish",
+      at: new Date().toISOString(),
+      fetched,
+      inserted,
+      skipped,
+      failedFeeds,
+      disabledSources,
+    });
 
-  stageLog.push({
-    stage: "ingest",
-    event: "finish",
-    at: new Date().toISOString(),
-    fetched,
-    inserted,
-    skipped,
-    failedFeeds,
-    disabledSources,
-  });
+    stageLog.push({ stage: "retention", event: "finish", at: new Date().toISOString(), ...(await runRetention()) });
 
-  await db
-    .update(runs)
-    .set({
-      finishedAt: new Date(),
-      status: "completed",
-      stageLog,
-    })
-    .where(eq(runs.id, runId));
+    await db.update(runs).set({ finishedAt: new Date(), status: "completed", stageLog }).where(eq(runs.id, runId));
 
-  return { fetched, inserted, skipped, failedFeeds, disabledSources };
+    return { fetched, inserted, skipped, failedFeeds, disabledSources };
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    console.error(`[ingest] run ${runId} failed:`, err);
+    await db.update(runs).set({ finishedAt: new Date(), status: "failed", stageLog, error }).where(eq(runs.id, runId));
+    throw err;
+  }
 }

@@ -8,6 +8,7 @@ async function main() {
 
   const result = await generateBrief(
     {
+      mode: "role",
       userName: "there",
       roleTitle,
       sectors,

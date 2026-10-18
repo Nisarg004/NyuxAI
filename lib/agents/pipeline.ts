@@ -1,21 +1,14 @@
-import { eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { addUsage, ZERO_USAGE, type TokenUsage } from "../llm";
-import { articles, digestItems, digests, preferences, runs, sources, users } from "../db/schema";
-import { profileQuery, selectCandidates } from "./candidates";
-import { runCurator } from "./curator";
-import { ensureBriefs } from "./article-brief";
+import { digestItems, digests, preferences, runs, users } from "../db/schema";
+import { curateAndBrief, ITEMS_PER_SECTOR } from "./curation";
+import { getOrBuildSectorEdition } from "./edition";
 import { applyDepth } from "./depth";
 import { personalizeWhyItMatters } from "./personalizer";
-import type { ResearchInput } from "./researcher";
 import { runCrossSectorNote } from "./writer";
 
 type StageLogEntry = Record<string, unknown>;
-// How many items per sector a digest carries. The Curator over-selects by EXTRA_CANDIDATES so
-// that briefs the Editor rejects can be backfilled from the next-best picks.
-const ITEMS_PER_SECTOR = 5;
-const EXTRA_CANDIDATES = 2;
-
 type RankedItem = {
   article_id: string;
   sector: string;
@@ -40,6 +33,7 @@ export type GenerateDigestResult =
   | { success: false; runId: string; error: string; stageLog: StageLogEntry[] };
 
 export type BriefContext = {
+  mode: "sectors" | "role";
   userName: string;
   roleTitle: string | null;
   sectors: string[];
@@ -100,136 +94,77 @@ export async function generateBrief(
   };
 
   try {
-    // --- Curator ---
-    const curatorStart = Date.now();
-    log({ stage: "curator", event: "start", at: now(), sectors: ctx.sectors, candidateLimit: opts.maxCandidates ?? null });
+    // Two ways to fill a brief. "sectors" readers get each sector's shared edition (no per-user
+    // model calls). "role" readers get a Curator run for their own profile over the shared briefs.
+    let items: RankedItem[];
+    let failures: { sector: string; error: string }[];
+    let allRejected: { article_id: string; reason: string }[];
+    let selectedCount: number;
+    const keyFactsById = new Map<string, string[]>();
 
-    const selected = await selectCandidates({
-      sectors: ctx.sectors,
-      queryText: profileQuery({ roleTitle: ctx.roleTitle, keywords: ctx.keywords, feedbackProfile: ctx.feedbackProfile }),
-      limit: opts.maxCandidates,
-    });
-    const candidates = selected.candidates;
-    const prefilterUsage = track(selected.usage);
-    const curatorResult = await runCurator({
-      roleTitle: ctx.roleTitle,
-      keywords: ctx.keywords,
-      feedbackProfile: ctx.feedbackProfile,
-      sectors: ctx.sectors,
-      candidates,
-      perSector: Math.min(7, (opts.maxItemsPerSector ?? ITEMS_PER_SECTOR) + EXTRA_CANDIDATES),
-    });
-
-    const curatorUsage = track(curatorResult.usage);
-
-    if (curatorResult.degraded) {
-      log({ stage: "curator", event: "finish", at: now(), durationMs: Date.now() - curatorStart, status: "degraded", error: curatorResult.error, usage: curatorUsage });
-      return fail(`Curator failed: ${curatorResult.error}`);
+    if (ctx.mode === "sectors") {
+      const cap = opts.maxItemsPerSector ?? ITEMS_PER_SECTOR;
+      const editions = await Promise.all(
+        ctx.sectors.map(async (sector) => {
+          const start = Date.now();
+          try {
+            const edition = await getOrBuildSectorEdition(sector);
+            log({ stage: "edition", event: "finish", at: now(), sector, durationMs: Date.now() - start, status: "ok", cached: edition.cached, itemCount: edition.items.length, editionRunId: edition.runId });
+            return { ok: true as const, sector, edition };
+          } catch (err) {
+            const error = err instanceof Error ? err.message : String(err);
+            log({ stage: "edition", event: "finish", at: now(), sector, durationMs: Date.now() - start, status: "degraded", error });
+            return { ok: false as const, sector, error };
+          }
+        }),
+      );
+      failures = editions.flatMap((e) => (e.ok ? [] : [{ sector: e.sector, error: e.error }]));
+      allRejected = [];
+      items = editions.flatMap((e) =>
+        e.ok
+          ? e.edition.items
+              .filter((i) => i.rank <= cap)
+              .map((i) => ({ ...i, sector: e.sector, summary: applyDepth(i.summary, ctx.depth) }))
+          : [],
+      );
+      selectedCount = items.length;
+      if (failures.length > 0) {
+        log({ stage: "pipeline", event: "note", at: now(), message: "One or more sector editions failed; those sectors are excluded.", failedSectors: failures });
+      }
+    } else {
+      const curated = await curateAndBrief(
+        { sectors: ctx.sectors, roleTitle: ctx.roleTitle, keywords: ctx.keywords, feedbackProfile: ctx.feedbackProfile, maxCandidates: opts.maxCandidates, itemsPerSector: opts.maxItemsPerSector },
+        { log, track },
+      );
+      if (!curated.ok) return fail(curated.error);
+      failures = curated.failures;
+      allRejected = curated.rejected;
+      selectedCount = curated.selectedCount;
+      for (const i of curated.items) keyFactsById.set(i.article_id, i.keyFacts);
+      items = curated.items.map((i) => ({
+        article_id: i.article_id,
+        sector: i.sector,
+        headline: i.headline,
+        summary: applyDepth(i.summary, ctx.depth),
+        why_it_matters: i.why_it_matters,
+        source_url: i.source_url,
+        rank: i.rank,
+      }));
     }
 
-    log({
-      stage: "curator",
-      event: "finish",
-      at: now(),
-      durationMs: Date.now() - curatorStart,
-      status: "ok",
-      usage: curatorUsage,
-      candidateCount: candidates.length,
-      rawCount: selected.stats.rawCount,
-      storyCount: selected.stats.storyCount,
-      prefiltered: selected.stats.prefiltered,
-      prefilterUsage,
-      selectedCount: curatorResult.data.selected.length,
-      selections: curatorResult.data.selected.map((s) => ({ article_id: s.article_id, sector: s.sector, score: s.score, reason: s.reason })),
-    });
-
-    if (curatorResult.data.selected.length === 0) {
-      log({ stage: "pipeline", event: "finish", at: now(), note: "Curator selected zero articles; nothing to research or write." });
+    if (selectedCount === 0 && failures.length === 0) {
+      log({ stage: "pipeline", event: "finish", at: now(), note: ctx.mode === "sectors" ? "No sector had any stories to show." : "Curator selected zero articles; nothing to research or write." });
       await db.update(runs).set({ finishedAt: new Date(), status: "completed", stageLog, tokenCost: tokenCost() }).where(eq(runs.id, runId));
       return { success: true, runId, items: [], editorsNote: "", rejected: [], stageLog, curatorSelectedCount: 0 };
     }
 
-    // --- Researcher ---
-    const selectedIds = curatorResult.data.selected.map((s) => s.article_id);
-    const articleRows = await db
-      .select({
-        id: articles.id,
-        title: articles.title,
-        url: articles.url,
-        excerpt: articles.excerpt,
-        sector: articles.sector,
-        source: sources.name,
-      })
-      .from(articles)
-      .innerJoin(sources, eq(articles.sourceId, sources.id))
-      .where(inArray(articles.id, selectedIds));
-
-    const researchInputs: ResearchInput[] = articleRows.map((row) => ({
-      articleId: row.id,
-      sector: row.sector,
-      title: row.title,
-      url: row.url,
-      source: row.source,
-      excerpt: row.excerpt,
-    }));
-
-    // --- Shared briefs: cached per article; only missing ones are researched, written, verified ---
-    const { briefs, failures } = await ensureBriefs(researchInputs, { log, track });
-
-    if (failures.length > 0) {
-      log({
-        stage: "pipeline",
-        event: "note",
-        at: now(),
-        message: "One or more sectors failed independently; their items are excluded but the run continues.",
-        failedSectors: failures,
-      });
-    }
-
-    // Rank by the Curator's score, keep each sector's best verified briefs, drop the rest.
-    const sectorByArticleId = new Map(researchInputs.map((r) => [r.articleId.toLowerCase(), r.sector]));
-    const urlByArticleId = new Map(researchInputs.map((r) => [r.articleId.toLowerCase(), r.url]));
-    const cap = opts.maxItemsPerSector ?? ITEMS_PER_SECTOR;
-    const allRejected: { article_id: string; reason: string }[] = [];
-    const perSectorCount = new Map<string, number>();
-    let items: RankedItem[] = [];
-
-    for (const sel of [...curatorResult.data.selected].sort((a, b) => b.score - a.score)) {
-      const id = sel.article_id.toLowerCase();
-      const brief = briefs.get(id);
-      const sector = sectorByArticleId.get(id);
-      if (!brief || !sector) continue; // its sector's Writer/Editor degraded; noted above
-      if (!brief.verified || !brief.whyItMatters) {
-        allRejected.push({ article_id: id, reason: brief.editorNotes ?? "Rejected by the Editor." });
-        continue;
-      }
-      const sourceUrl = urlByArticleId.get(id);
-      if (!sourceUrl) {
-        allRejected.push({ article_id: id, reason: "No matching source URL was found for this article_id." });
-        log({ stage: "pipeline", event: "warning", at: now(), sector, article_id: id, message: "Dropped item with unresolvable source_url" });
-        continue;
-      }
-      const rank = (perSectorCount.get(sector) ?? 0) + 1;
-      if (rank > cap) continue;
-      perSectorCount.set(sector, rank);
-      items.push({
-        article_id: id,
-        sector,
-        headline: brief.headline,
-        summary: applyDepth(brief.summary, ctx.depth),
-        why_it_matters: brief.whyItMatters,
-        source_url: sourceUrl,
-        rank,
-      });
-    }
-
     // --- Personalizer: role-tuned readers get a verified "why it matters for you" line ---
-    if (ctx.roleTitle && items.length > 0) {
+    if (ctx.mode === "role" && ctx.roleTitle && items.length > 0) {
       const start = Date.now();
       log({ stage: "personalizer", event: "start", at: now(), itemCount: items.length });
       const personalized = await personalizeWhyItMatters({
         roleTitle: ctx.roleTitle,
-        items: items.map((i) => ({ articleId: i.article_id, headline: i.headline, summary: i.summary, keyFacts: briefs.get(i.article_id)?.keyFacts ?? [] })),
+        items: items.map((i) => ({ articleId: i.article_id, headline: i.headline, summary: i.summary, keyFacts: keyFactsById.get(i.article_id) ?? [] })),
       });
       const usage = track(personalized.usage);
       items = items.map((i) => ({ ...i, why_it_matters: personalized.lines.get(i.article_id) ?? i.why_it_matters }));
@@ -247,8 +182,9 @@ export async function generateBrief(
     }
 
     // --- Cross-sector editors note ---
+    // Sector-mode briefs skip it: it would be a per-reader model call, which is what that mode avoids.
     let editorsNote = "";
-    if (items.length > 0) {
+    if (ctx.mode === "role" && items.length > 0) {
       const noteStart = Date.now();
       log({ stage: "editors_note", event: "start", at: now(), itemCount: items.length });
 
@@ -273,7 +209,7 @@ export async function generateBrief(
       return { success: false, runId, error: "All sectors failed to produce a digest", stageLog };
     }
 
-    return { success: true, runId, items, editorsNote, rejected: allRejected, stageLog, curatorSelectedCount: curatorResult.data.selected.length };
+    return { success: true, runId, items, editorsNote, rejected: allRejected, stageLog, curatorSelectedCount: selectedCount };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     return fail(error);
@@ -300,6 +236,7 @@ export async function generateDigest(
 
   const result = await generateBrief(
     {
+      mode: prefs.mode,
       userName: user.name,
       roleTitle: user.roleTitle,
       sectors: prefs.sectors,

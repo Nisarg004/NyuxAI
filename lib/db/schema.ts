@@ -22,6 +22,9 @@ export const digestStatusEnum = pgEnum("digest_status", [
   "sent",
   "failed",
 ]);
+// "role": curated and personalised for this reader. "sectors": the shared edition for each
+// chosen sector, built once per sector and bucket and served with no per-user LLM calls.
+export const preferencesModeEnum = pgEnum("preferences_mode", ["sectors", "role"]);
 export const feedbackSignalEnum = pgEnum("feedback_signal", ["up", "down", "save"]);
 
 export const jobKindEnum = pgEnum("job_kind", ["generate", "send"]);
@@ -85,6 +88,7 @@ export const preferences = pgTable("preferences", {
   feedbackProfile: text("feedback_profile"),
   feedbackProfileUpdatedAt: timestamp("feedback_profile_updated_at", { withTimezone: true }),
   nextRunAt: timestamp("next_run_at", { withTimezone: true }),
+  mode: preferencesModeEnum("mode").notNull().default("sectors"),
   isActive: boolean("is_active").notNull().default(true),
 }, (t) => [index("preferences_due_idx").on(t.nextRunAt).where(sql`${t.isActive}`)]);
 
@@ -250,3 +254,29 @@ export const articleBriefs = pgTable("article_briefs", {
   model: text("model").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// The sector edition: one neutral brief per sector per time bucket, shared by every reader
+// in "sectors" mode. `items` are copies (headline, summary, why_it_matters, source_url, rank)
+// so an edition stays readable after its articles are pruned, like digest_items.
+export type EditionItem = {
+  article_id: string;
+  headline: string;
+  summary: string;
+  why_it_matters: string;
+  source_url: string;
+  rank: number;
+};
+
+export const sectorEditions = pgTable(
+  "sector_editions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sector: text("sector").notNull(),
+    // Start of the 12h UTC bucket this edition covers, e.g. 2026-10-18T12:00Z.
+    bucketStart: timestamp("bucket_start", { withTimezone: true }).notNull(),
+    items: jsonb("items").$type<EditionItem[]>().notNull(),
+    runId: uuid("run_id").references(() => runs.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("sector_editions_sector_bucket_idx").on(t.sector, t.bucketStart)],
+);

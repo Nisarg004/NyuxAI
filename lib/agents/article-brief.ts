@@ -49,6 +49,7 @@ async function runBriefWriter(items: ResearchedItem[]): Promise<LLMResult<z.infe
     "You are the Writer agent in a news briefing pipeline, producing a neutral brief for each article that many different readers will share.",
     "For each article produce: `headline` (max 12 words, factual, no clickbait), `summary` (2-3 sentences, using only facts present in the source text), and `key_facts` (3-5 short, literal, self-contained facts from the source text: numbers, dates, decisions, named parties).",
     "If the source text does not support a claim, omit it — never invent or infer facts not present in the text.",
+    "Write as a news brief, not a description of your inputs: never mention \"the source text\", \"the article\", \"the title\", \"the excerpt\" or \"according to the article title\". Attribute to a named outlet or person only when the text does.",
     "`why_it_matters` is exactly one sentence for an informed general reader following this sector: it must name a concrete consequence, decision, number, or named party that someone would weigh differently because of this article.",
     "Never write a sentence that could be pasted onto any other story in this sector — that is generic filler. Banned: the pattern \"X can affect/impact Y\", and hedges like \"worth watching\", \"worth monitoring\", or \"remains a factor\".",
     "If the source text is too thin to support a specific consequence (only a date, a headline-level fact, or a number with no stated implication), set `why_it_matters` to null. Do not invent a sentence to fill the field.",
@@ -78,6 +79,7 @@ async function runBriefEditor(
     "Reject any item with an unsupported claim, giving a specific one-sentence `reason` — be concrete about what failed.",
     "If `why_it_matters` is null, reject with reason \"No concrete consequence could be established from the source.\" Never write your own why_it_matters to fill the gap.",
     "For items that pass, strip hype adjectives and hedging, and enforce limits: headline max 12 words, summary max 3 sentences, why_it_matters exactly one sentence. Remove (do not rewrite) any key_fact that is unsupported, keeping at least one.",
+    "Also strip any phrase that talks about the input rather than the news, such as \"according to the article title\", \"the source text says\" or \"the excerpt notes\".",
     "Return approved items in the same shape you received them, edited in place, plus the rejected list.",
   ].join(" ");
 

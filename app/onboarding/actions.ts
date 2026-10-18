@@ -42,6 +42,8 @@ export async function submitOnboarding(formData: FormData) {
     const values = {
       userId: user.id,
       sectors,
+      // Giving a role opts into the role-tuned brief; otherwise the shared sector edition.
+      mode: roleTitle ? ("role" as const) : ("sectors" as const),
       deliveryHour,
       deliveryMinute,
       timezone,

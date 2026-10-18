@@ -43,7 +43,8 @@ All timestamps are `timestamptz` (`{ withTimezone: true }`).
 
 - **`users`** — `id`, `email` (unique), `name`, `role_title` (nullable), `created_at`
 - **`preferences`** — `user_id` (fk, unique), `sectors` (text[]), `delivery_hour`,
-  `delivery_minute`, `timezone` (default `Asia/Kolkata`), `depth`
+  `delivery_minute`, `timezone` (default `Asia/Kolkata`), `mode` (`sectors|role`, default
+  `sectors`), `depth`
   (`brief|standard|deep`, default `standard`), `keywords` (text[]), `feedback_profile`
   (nullable text), `feedback_profile_updated_at`, `next_run_at`, `is_active`
 - **`sources`** — `id`, `sector`, `name`, `rss_url`, `weight` (default 1), `is_active`,
@@ -58,6 +59,8 @@ All timestamps are `timestamptz` (`{ withTimezone: true }`).
   `last_updated`: a cross-outlet cluster of articles about one event (see "Story clustering")
 - **`article_briefs`** — one shared, Editor-verified brief per article (`headline`, `summary`,
   `why_it_matters`, `key_facts`, `verified`, `editor_notes`, `research_depth`, `model`)
+- **`sector_editions`** — `sector`, `bucket_start` (12h UTC), `items` (jsonb copies incl. `source_url`),
+  `run_id`; unique on (sector, bucket) — see "Two editions"
 - **`jobs`** — the generate/send work queue (see "The job queue and cron dispatcher")
 - **`digests`** — `id`, `user_id` (fk), `scheduled_for`, `sent_at`, `status`
   (`pending|generating|ready|sent|failed`), `subject`, `html`, `run_meta` (jsonb). Unique
@@ -135,6 +138,23 @@ the shared `summary` + `key_facts`, and a second call has an Editor verify each 
 those facts. Approved lines replace the neutral one; rejected or failed ones fall back to it.
 `depth` is applied when assembling items (`lib/agents/depth.ts`: `brief` keeps the lead
 sentence; `deep` reads as standard).
+
+**Two editions** (`preferences.mode`, `lib/agents/edition.ts`, table `sector_editions`).
+`generateBrief` branches on `ctx.mode`. **`role`**: the per-user path above (Curator for this
+reader, shared briefs, personalizer, cross-sector note). **`sectors`**: no per-user model calls at
+all: each chosen sector's *edition* is read from `sector_editions`, filtered to the reader's item
+cap and depth. An edition is `curateAndBrief` for a neutral reader (no role/keywords/feedback, so the
+pool ranks by outlet coverage then recency), built once per sector per 12h UTC bucket by whichever
+reader needs it first and shared afterwards. Builds are single-flight via
+`pg_advisory_xact_lock` on (sector, bucket), so concurrent readers wait and read instead of paying
+twice; a failed or empty build stores nothing, so the next request retries. Editions over-select
+(+5 picks) because the neutral Editor rejects roughly half of briefs for lacking a concrete
+consequence, and those briefs are cached for everyone. Sector-mode digests skip the editor's note.
+`mode` is set at onboarding (a role means `role`, otherwise `sectors`); migration 0011 backfilled
+existing users with a role to `role`. The landing route uses `sectors` when no role is typed.
+Measured on the dev DB: a sector-mode digest costs 0 tokens; one edition build ~16k tokens/12h.
+Feedback is still recorded for sector-mode readers but cannot shape a shared edition.
+`curateAndBrief` (`lib/agents/curation.ts`) is the shared Curator -> briefs -> ranking helper.
 
 **Backfill instead of retry**: the Curator over-selects (`perSector` + 2, max 7) and the top
 verified briefs per sector fill the digest, so a rejected item is replaced by the next-best pick.

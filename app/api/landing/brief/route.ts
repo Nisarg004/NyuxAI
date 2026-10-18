@@ -58,6 +58,8 @@ export async function POST(request: Request) {
       try {
         const result = await generateBrief(
           {
+            // A stranger who gave no role gets the shared sector editions: free once built.
+            mode: roleTitle ? "role" : "sectors",
             userName: "there",
             roleTitle,
             sectors,

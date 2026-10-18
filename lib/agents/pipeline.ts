@@ -3,13 +3,27 @@ import { db } from "../db";
 import { addUsage, ZERO_USAGE, type TokenUsage } from "../llm";
 import { articles, digestItems, digests, preferences, runs, sources, users } from "../db/schema";
 import { fetchCandidateArticles, runCurator } from "./curator";
-import { runEditor, type EditorInput } from "./editor";
-import { runResearcher, type ResearchedItem, type ResearchInput } from "./researcher";
-import { runCrossSectorNote, runWriter } from "./writer";
-import type { WriterItem } from "./schemas";
+import { ensureBriefs } from "./article-brief";
+import { applyDepth } from "./depth";
+import { personalizeWhyItMatters } from "./personalizer";
+import type { ResearchInput } from "./researcher";
+import { runCrossSectorNote } from "./writer";
 
 type StageLogEntry = Record<string, unknown>;
-type RankedItem = WriterItem & { source_url: string; rank: number };
+// How many items per sector a digest carries. The Curator over-selects by EXTRA_CANDIDATES so
+// that briefs the Editor rejects can be backfilled from the next-best picks.
+const ITEMS_PER_SECTOR = 5;
+const EXTRA_CANDIDATES = 2;
+
+type RankedItem = {
+  article_id: string;
+  sector: string;
+  headline: string;
+  summary: string;
+  why_it_matters: string;
+  source_url: string;
+  rank: number;
+};
 
 export type GenerateDigestResult =
   | {
@@ -47,122 +61,6 @@ export type GenerateBriefResult =
 
 function now() {
   return new Date().toISOString();
-}
-
-type SectorResult = {
-  sector: string;
-  approved: WriterItem[];
-  rejected: { article_id: string; reason: string }[];
-  writerError?: string;
-  editorError?: string;
-};
-
-type AttemptResult =
-  | { ok: true; approved: WriterItem[]; rejected: { article_id: string; reason: string }[] }
-  | { ok: false; writerError?: string; editorError?: string };
-
-// Runs Writer -> Editor for one sector's items. Never throws — a failure in this
-// sector must not take down the other sectors running alongside it. If the first
-// pass approves nothing, relaxes once by retrying the Writer with the specific
-// rejection reasons before shipping the sector empty — an empty sector should be
-// a genuine dead end, not a first-try fluke.
-async function runSectorPipeline(
-  sector: string,
-  items: ResearchedItem[],
-  log: (entry: StageLogEntry) => void,
-  writerInput: { userName: string; roleTitle: string | null; depth: "brief" | "standard" | "deep" },
-  track: (usage: TokenUsage) => TokenUsage
-): Promise<SectorResult> {
-  const runAttempt = async (
-    attempt: 1 | 2,
-    previousRejections?: { article_id: string; reason: string }[]
-  ): Promise<AttemptResult> => {
-    const writerStart = Date.now();
-    log({ stage: "writer", event: "start", at: now(), sector, attempt, itemCount: items.length });
-
-    const writerResult = await runWriter({ ...writerInput, items, previousRejections });
-    const writerUsage = track(writerResult.usage);
-
-    if (writerResult.degraded) {
-      log({ stage: "writer", event: "finish", at: now(), sector, attempt, durationMs: Date.now() - writerStart, status: "degraded", error: writerResult.error, usage: writerUsage });
-      return { ok: false, writerError: writerResult.error };
-    }
-
-    log({
-      stage: "writer",
-      event: "finish",
-      at: now(),
-      sector,
-      attempt,
-      durationMs: Date.now() - writerStart,
-      status: "ok",
-      itemCount: writerResult.data.items.length,
-      usage: writerUsage,
-    });
-
-    const sourceTextByArticleId = new Map(items.map((i) => [i.articleId, i.text]));
-    const editorInputs: EditorInput[] = writerResult.data.items.map((item) => ({
-      ...item,
-      sourceText: sourceTextByArticleId.get(item.article_id) ?? "",
-    }));
-
-    const editorStart = Date.now();
-    log({ stage: "editor", event: "start", at: now(), sector, attempt, itemCount: editorInputs.length });
-
-    const editorResult = await runEditor(editorInputs);
-    const editorUsage = track(editorResult.usage);
-
-    if (editorResult.degraded) {
-      log({ stage: "editor", event: "finish", at: now(), sector, attempt, durationMs: Date.now() - editorStart, status: "degraded", error: editorResult.error, usage: editorUsage });
-      return { ok: false, editorError: editorResult.error };
-    }
-
-    // Rejections are preserved even though they don't ship — they're a demo asset.
-    log({
-      stage: "editor",
-      event: "finish",
-      at: now(),
-      sector,
-      attempt,
-      durationMs: Date.now() - editorStart,
-      status: "ok",
-      approvedCount: editorResult.data.approved.length,
-      rejectedCount: editorResult.data.rejected.length,
-      rejected: editorResult.data.rejected,
-      usage: editorUsage,
-    });
-
-    return { ok: true, approved: editorResult.data.approved, rejected: editorResult.data.rejected };
-  };
-
-  try {
-    const first = await runAttempt(1);
-    if (!first.ok) {
-      return { sector, approved: [], rejected: [], writerError: first.writerError, editorError: first.editorError };
-    }
-    if (first.approved.length > 0) {
-      return { sector, approved: first.approved, rejected: first.rejected };
-    }
-
-    log({
-      stage: "pipeline",
-      event: "note",
-      at: now(),
-      sector,
-      message: "Zero items approved on the first pass; retrying the Writer once before shipping this sector empty.",
-    });
-
-    const second = await runAttempt(2, first.rejected);
-    if (!second.ok) {
-      return { sector, approved: [], rejected: first.rejected, writerError: second.writerError, editorError: second.editorError };
-    }
-
-    return { sector, approved: second.approved, rejected: [...first.rejected, ...second.rejected] };
-  } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
-    log({ stage: "sector_pipeline", event: "finish", at: now(), sector, status: "error", error });
-    return { sector, approved: [], rejected: [], writerError: error };
-  }
 }
 
 export async function generateBrief(
@@ -212,6 +110,7 @@ export async function generateBrief(
       feedbackProfile: ctx.feedbackProfile,
       sectors: ctx.sectors,
       candidates,
+      perSector: Math.min(7, (opts.maxItemsPerSector ?? ITEMS_PER_SECTOR) + EXTRA_CANDIDATES),
     });
 
     const curatorUsage = track(curatorResult.usage);
@@ -263,79 +162,78 @@ export async function generateBrief(
       excerpt: row.excerpt,
     }));
 
-    const researcherStart = Date.now();
-    log({ stage: "researcher", event: "start", at: now(), itemCount: researchInputs.length });
+    // --- Shared briefs: cached per article; only missing ones are researched, written, verified ---
+    const { briefs, failures } = await ensureBriefs(researchInputs, { log, track });
 
-    const researched = await runResearcher(researchInputs);
-    const deepCount = researched.filter((r) => r.depth === "deep").length;
-
-    log({
-      stage: "researcher",
-      event: "finish",
-      at: now(),
-      durationMs: Date.now() - researcherStart,
-      itemCount: researched.length,
-      deep: deepCount,
-      shallow: researched.length - deepCount,
-    });
-
-    // --- Writer + Editor, one pipeline per sector, run in parallel ---
-    const bySector = new Map<string, ResearchedItem[]>();
-    for (const item of researched) {
-      const bucket = bySector.get(item.sector) ?? [];
-      bucket.push(item);
-      bySector.set(item.sector, bucket);
-    }
-
-    const sectorResults = await Promise.all(
-      [...bySector.entries()].map(([sector, items]) =>
-        runSectorPipeline(sector, items, log, {
-          userName: ctx.userName,
-          roleTitle: ctx.roleTitle,
-          depth: ctx.depth,
-        }, track)
-      )
-    );
-
-    const failedSectors = sectorResults.filter((r) => r.writerError || r.editorError);
-    if (failedSectors.length > 0) {
+    if (failures.length > 0) {
       log({
         stage: "pipeline",
         event: "note",
         at: now(),
         message: "One or more sectors failed independently; their items are excluded but the run continues.",
-        failedSectors: failedSectors.map((r) => ({ sector: r.sector, error: r.writerError ?? r.editorError })),
+        failedSectors: failures,
       });
     }
 
-    const allRejected = sectorResults.flatMap((r) => r.rejected);
+    // Rank by the Curator's score, keep each sector's best verified briefs, drop the rest.
+    const sectorByArticleId = new Map(researchInputs.map((r) => [r.articleId.toLowerCase(), r.sector]));
+    const urlByArticleId = new Map(researchInputs.map((r) => [r.articleId.toLowerCase(), r.url]));
+    const cap = opts.maxItemsPerSector ?? ITEMS_PER_SECTOR;
+    const allRejected: { article_id: string; reason: string }[] = [];
+    const perSectorCount = new Map<string, number>();
+    let items: RankedItem[] = [];
 
-    const scoreByArticleId = new Map(curatorResult.data.selected.map((s) => [s.article_id, s.score]));
-    const urlByArticleId = new Map(researched.map((r) => [r.articleId.toLowerCase(), r.url]));
-
-    const rankedItems: RankedItem[] = sectorResults.flatMap((sectorResult) => {
-      const sorted = [...sectorResult.approved].sort(
-        (a, b) => (scoreByArticleId.get(b.article_id) ?? 0) - (scoreByArticleId.get(a.article_id) ?? 0)
-      );
-
-      const resolved: RankedItem[] = [];
-      for (const item of sorted) {
-        const sourceUrl = urlByArticleId.get(item.article_id.toLowerCase());
-        if (!sourceUrl) {
-          allRejected.push({ article_id: item.article_id, reason: "No matching source URL was found for this article_id after the Writer/Editor pass." });
-          log({ stage: "pipeline", event: "warning", at: now(), sector: sectorResult.sector, article_id: item.article_id, message: "Dropped item with unresolvable source_url" });
-          continue;
-        }
-        resolved.push({ ...item, source_url: sourceUrl, rank: 0 });
+    for (const sel of [...curatorResult.data.selected].sort((a, b) => b.score - a.score)) {
+      const id = sel.article_id.toLowerCase();
+      const brief = briefs.get(id);
+      const sector = sectorByArticleId.get(id);
+      if (!brief || !sector) continue; // its sector's Writer/Editor degraded; noted above
+      if (!brief.verified || !brief.whyItMatters) {
+        allRejected.push({ article_id: id, reason: brief.editorNotes ?? "Rejected by the Editor." });
+        continue;
       }
-      return resolved.map((item, idx) => ({ ...item, rank: idx + 1 }));
-    });
+      const sourceUrl = urlByArticleId.get(id);
+      if (!sourceUrl) {
+        allRejected.push({ article_id: id, reason: "No matching source URL was found for this article_id." });
+        log({ stage: "pipeline", event: "warning", at: now(), sector, article_id: id, message: "Dropped item with unresolvable source_url" });
+        continue;
+      }
+      const rank = (perSectorCount.get(sector) ?? 0) + 1;
+      if (rank > cap) continue;
+      perSectorCount.set(sector, rank);
+      items.push({
+        article_id: id,
+        sector,
+        headline: brief.headline,
+        summary: applyDepth(brief.summary, ctx.depth),
+        why_it_matters: brief.whyItMatters,
+        source_url: sourceUrl,
+        rank,
+      });
+    }
 
-    // Landing caps the visible items per sector; ranks are already 1-based per sector.
-    const items =
-      opts.maxItemsPerSector !== undefined
-        ? rankedItems.filter((i) => i.rank <= opts.maxItemsPerSector!)
-        : rankedItems;
+    // --- Personalizer: role-tuned readers get a verified "why it matters for you" line ---
+    if (ctx.roleTitle && items.length > 0) {
+      const start = Date.now();
+      log({ stage: "personalizer", event: "start", at: now(), itemCount: items.length });
+      const personalized = await personalizeWhyItMatters({
+        roleTitle: ctx.roleTitle,
+        items: items.map((i) => ({ articleId: i.article_id, headline: i.headline, summary: i.summary, keyFacts: briefs.get(i.article_id)?.keyFacts ?? [] })),
+      });
+      const usage = track(personalized.usage);
+      items = items.map((i) => ({ ...i, why_it_matters: personalized.lines.get(i.article_id) ?? i.why_it_matters }));
+      log({
+        stage: "personalizer",
+        event: "finish",
+        at: now(),
+        durationMs: Date.now() - start,
+        status: personalized.error ? "degraded" : "ok",
+        personalizedCount: personalized.lines.size,
+        rejected: personalized.rejected,
+        usage,
+        ...(personalized.error ? { error: personalized.error } : {}),
+      });
+    }
 
     // --- Cross-sector editors note ---
     let editorsNote = "";
@@ -354,7 +252,7 @@ export async function generateBrief(
       }
     }
 
-    const runStatus = items.length > 0 || failedSectors.length === 0 ? "completed" : "failed";
+    const runStatus = items.length > 0 || failures.length === 0 ? "completed" : "failed";
 
     log({ stage: "pipeline", event: "finish", at: now(), itemCount: items.length, kind: opts.kind, usage });
 

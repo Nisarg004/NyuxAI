@@ -50,12 +50,14 @@ export async function runCurator(input: {
   feedbackProfile: string | null;
   sectors: string[];
   candidates: CandidateArticle[];
+  // Per-sector pick count; callers over-select so rejected items can be backfilled.
+  perSector?: number;
 }): Promise<LLMResult<CuratorOutput>> {
   const system = [
     "You are the Curator agent in a news briefing pipeline.",
     "Given a reader profile and a pool of candidate articles, first mentally dedupe near-identical stories covered by multiple outlets (keep the best single version).",
     "Then score each remaining article 0-100 for relevance to this specific reader.",
-    "Return the top 5 articles per sector, ranked by score.",
+    `Return the top ${input.perSector ?? 5} articles per sector, ranked by score.`,
     "The `reason` field must be one short clause explaining the score — it is shown to the reader in a run log, so make it specific to this article and this reader, not generic.",
   ].join(" ");
 

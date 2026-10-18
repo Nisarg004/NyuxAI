@@ -208,3 +208,23 @@ export const jobs = pgTable(
     index("jobs_status_run_after_idx").on(t.status, t.runAfter),
   ],
 );
+
+// One neutral, Editor-verified brief per article, written once and shared by every user
+// whose Curator selects it. Per-user work is then limited to curation and (for role-tuned
+// readers) a short personalised "why it matters" checked against `key_facts`.
+// Unverified rows record an Editor rejection after deep research, so a thin article is not
+// rewritten and re-rejected on every run.
+export const articleBriefs = pgTable("article_briefs", {
+  articleId: uuid("article_id")
+    .primaryKey()
+    .references(() => articles.id, { onDelete: "cascade" }),
+  headline: text("headline").notNull(),
+  summary: text("summary").notNull(),
+  whyItMatters: text("why_it_matters"),
+  keyFacts: jsonb("key_facts").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  verified: boolean("verified").notNull(),
+  editorNotes: text("editor_notes"),
+  researchDepth: text("research_depth").notNull(),
+  model: text("model").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

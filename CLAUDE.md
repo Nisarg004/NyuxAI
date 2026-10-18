@@ -3,7 +3,7 @@
 # Brieff — project reference for Claude Code
 
 Brieff is a personalized-news-briefing app: a four-agent pipeline (Curator → Researcher →
-Writer → Editor) builds a sourced daily brief per user, sent by email and readable in-app,
+Writer → Editor, with Writer/Editor results shared across users per article) builds a sourced daily brief per user, sent by email and readable in-app,
 with a thumbs up/down feedback loop that reshapes future curation. Full original build
 spec (phases 1–7): `files/CC.md`. Phases 1–7 are built. Phase 6 (cron scheduler) was
 skipped for a long time and then added: `POST /api/cron/dispatch` reads `next_run_at`,
@@ -89,34 +89,35 @@ back to the RSS excerpt (`depth: "shallow"`). Runs with concurrency 10 (`lib/con
 — bumped from the spec's 5 after a dry run showed 5-wide concurrency forcing two sequential
 8s-timeout waves on a typical 10-article selection).
 
-**Writer** (`lib/agents/writer.ts`, `MODEL_WRITER`). Called once per sector, sectors run in
-parallel. Input: reader `{ name, role_title, depth }` and that sector's researched items
-`{ article_id, sector, title, source, research_depth, source_text }` (plus
-`previous_rejections` on a retry — see below). Output (`writerOutputSchema`): `{ items:
-[{ article_id, sector, headline (≤12 words), summary (2–3 sentences), why_it_matters
-(string | null) }], editors_note }`. `why_it_matters` is explicitly nullable at this stage —
-the Writer is instructed to set it `null` rather than invent a generic consequence when the
-source doesn't support one; the Editor is responsible for rejecting those. A separate,
-cheap `runCrossSectorNote` call (`MODEL_FAST`) synthesizes the real cross-sector
-`editors_note` afterward, once all sectors' items are known — the per-sector Writer calls
-never see each other's output.
+**Shared article briefs** (`lib/agents/article-brief.ts`, table `article_briefs`) replace the
+per-user Writer and Editor. `ensureBriefs` takes the Curator's selection and, for each article
+without a brief, researches it (Researcher above), then runs a *neutral* Writer (`MODEL_WRITER`,
+batched 6 articles per call: `headline` ≤12 words, `summary`, general-reader `why_it_matters`
+(nullable), 3-5 literal `key_facts`) and an Editor (`MODEL_FAST`) that verifies every claim in
+summary / why_it_matters / key_facts against the source text and rejects null consequences.
+Results are persisted once and reused by every later user whose Curator picks that article; a
+fully cached batch makes no network or LLM calls. Verified briefs are always stored; Editor
+rejections are stored (`verified=false`, `editor_notes`) only after *deep* research, so a thin
+RSS-excerpt rejection (maybe a failed Jina fetch) is retried later. Built on demand rather than
+as a post-ingest job, so nothing is spent on the ~600 daily articles no Curator selects. It logs
+per-sector `writer`/`editor` stage events (`cached: true` when served from cache) in the shape the
+progress UI and `/runs` already read. `writer.ts` now only holds `runCrossSectorNote`
+(`MODEL_FAST`, the real cross-sector `editors_note`, run once all items are known).
 
-**Editor** (`lib/agents/editor.ts`, `MODEL_FAST`). Input: each written item plus its
-`source_text`. Verifies every claim in `summary`/`why_it_matters` is supported by the
-source text, rejects items with a null `why_it_matters` or an unsupported claim, strips
-hype/hedging, enforces word limits. Output (`editorOutputSchema`): `{ approved: [{
-article_id, sector, headline, summary, why_it_matters (non-null) }], rejected: [{
-article_id, reason }] }`. `writerItemSchema` (used for `approved`) requires non-null
-`why_it_matters`, so structured-output validation itself blocks a null from shipping.
-Rejections are preserved in `stage_log` — a demo asset, not swallowed.
+**Personalizer** (`lib/agents/personalizer.ts`, `MODEL_FAST`). Only for readers with a
+`role_title`: one batched call per digest writes a role-specific `why_it_matters` per item from
+the shared `summary` + `key_facts`, and a second call has an Editor verify each line against
+those facts. Approved lines replace the neutral one; rejected or failed ones fall back to it.
+`depth` is applied when assembling items (`lib/agents/depth.ts`: `brief` keeps the lead
+sentence; `deep` reads as standard).
 
-**Per-sector retry**: `runSectorPipeline` in `pipeline.ts` runs Writer → Editor for one
-sector; if the first pass approves zero items, it retries the Writer once with the specific
-rejection reasons (`previousRejections`) before shipping that sector empty. This is beyond
-CC.md's original spec but keeps a single bad pass from silently zeroing a sector.
+**Backfill instead of retry**: the Curator over-selects (`perSector` + 2, max 7) and the top
+verified briefs per sector fill the digest, so a rejected item is replaced by the next-best pick.
+Measured on the dev DB: cold run 47k tokens, warm run 30k (86% of it the Curator) vs a flat 38k
+before; the Curator is what Phase 2.3/2.4 attack next.
 
-**Ranking & persistence**: approved items are ranked within each sector by the Curator's
-original score (highest first); an item whose `article_id` doesn't resolve to a known
+**Ranking & persistence**: verified briefs are ranked within each sector by the Curator's
+score (highest first); an item whose `article_id` doesn't resolve to a known
 `source_url` after the round trip is dropped and logged as a rejection (never ships without
 a `source_url` — rule 2 below). With `dryRun: false`, approved items are inserted into
 `digests` + `digest_items`; with `dryRun: true`, nothing is persisted and the result is

@@ -64,6 +64,13 @@
       "when": 1792321566629,
       "tag": "0008_unique_doctor_octopus",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792321969743,
+      "tag": "0009_crazy_grandmaster",
+      "breakpoints": true
     }
   ]
 }

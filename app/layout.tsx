@@ -1,43 +1,50 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Fraunces, Hanken_Grotesk } from "next/font/google";
+import { Bricolage_Grotesque, Geist } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
+import { Logo } from "@/components/brand/logo";
 import "./globals.css";
 
-// The editorial voice: everything the reader reads.
-const display = Fraunces({
+// The voice: headlines and the wordmark.
+const display = Bricolage_Grotesque({
   variable: "--font-display",
   subsets: ["latin"],
-  style: ["normal", "italic"],
-  axes: ["SOFT", "WONK", "opsz"],
+  axes: ["opsz", "wdth"],
 });
 
-// The app's furniture: everything the reader operates.
-const sans = Hanken_Grotesk({
+// Everything read and operated.
+const sans = Geist({
   variable: "--font-sans",
   subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
-  title: "Brieff",
-  description: "An edition of the news, edited for one reader.",
+  title: "Nyux: the news that matters to your work",
+  description:
+    "Nyux reads hundreds of stories a day, checks every claim against its source, and sends you the few that matter to your job.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${display.variable} ${sans.variable} h-full antialiased`}>
-      <body className="flex min-h-full flex-col bg-paper font-sans text-ink">
+      <body className="flex min-h-full flex-col bg-night font-sans text-star">
         {children}
-        <footer className="mx-auto w-full max-w-2xl border-t border-rule px-6 py-6 text-xs text-ink-soft">
-          <nav className="flex items-center gap-4">
-            <Link href="/privacy" className="hover:text-editor">
-              Privacy
-            </Link>
-            <Link href="/terms" className="hover:text-editor">
-              Terms
-            </Link>
-            <span className="ml-auto">&copy; 2026 Brieff</span>
-          </nav>
+        <footer className="border-t border-line">
+          <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-6 gap-y-3 px-6 py-8 text-sm text-haze">
+            <Logo className="text-lg text-star" />
+            <nav className="flex gap-5">
+              <Link href="/privacy" className="hover:text-star">
+                Privacy
+              </Link>
+              <Link href="/terms" className="hover:text-star">
+                Terms
+              </Link>
+              <Link href="/signin" className="hover:text-star">
+                Sign in
+              </Link>
+            </nav>
+            <span className="ml-auto">&copy; 2026 Nyux</span>
+          </div>
         </footer>
         <Toaster />
       </body>

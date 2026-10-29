@@ -4,12 +4,13 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { StarMark } from "@/components/brand/logo";
 import { useSendNow } from "@/lib/hooks/use-send-now";
 import { PipelineProgress } from "@/components/pipeline-progress";
 
 /** Shown instead of an empty state when the reader has never had a brief.
  * One tap runs the full pipeline, persists the brief and (best-effort) emails
- * it; the page then refreshes to render that brief inline. */
+ * it; the page then refreshes to render that brief inline on a morning sheet. */
 export function FirstBriefCta() {
   const { status, result, start, summary } = useSendNow();
   const router = useRouter();
@@ -25,20 +26,17 @@ export function FirstBriefCta() {
   }, [status, result, router]);
 
   return (
-    <section className="py-6">
-      <h2 className="font-display text-[1.75rem] leading-tight text-ink">
-        Your first brief hasn’t run yet
+    <section className="panel px-5 py-8 sm:px-8 sm:py-10">
+      <StarMark className="size-6 text-dawn" />
+      <h2 className="mt-4 font-display text-[clamp(1.75rem,3.5vw,2.5rem)] font-bold leading-[1.05] tracking-[-0.03em] text-star">
+        Your first brief hasn&rsquo;t been written yet
       </h2>
-      <p className="mt-1 text-[1.0625rem] leading-[1.7] text-ink-soft">
-        The desk can put one together right now — the curator, researcher, writer and
-        editor take about a minute.
+      <p className="mt-3 max-w-xl text-[1.0625rem] leading-[1.65] text-haze">
+        Nyux can build one right now. The curator, researcher, writer and editor take about a
+        minute, and every claim is checked against its source.
       </p>
-      <Button
-        onClick={start}
-        disabled={status === "running"}
-        className="mt-4 rounded-[3px] bg-ink px-4 text-paper hover:bg-editor"
-      >
-        {status === "running" ? "Going to press…" : "Generate my first brief now"}
+      <Button size="lg" onClick={start} disabled={status === "running"} className="mt-6">
+        {status === "running" ? "Writing your brief…" : "Write my first brief now"}
       </Button>
 
       {status !== "idle" ? <PipelineProgress summary={summary} /> : null}

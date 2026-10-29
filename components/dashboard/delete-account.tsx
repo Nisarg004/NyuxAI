@@ -12,7 +12,14 @@ export function DeleteAccount() {
         }
       }}
     >
-      <button type="submit" className="text-sm text-ink-soft underline decoration-rule underline-offset-4 hover:text-editor">
+      <h2 className="font-display text-lg font-semibold text-star">Your account</h2>
+      <p className="mt-1 text-sm leading-[1.55] text-haze">
+        Deleting your account removes every brief and all of your feedback.
+      </p>
+      <button
+        type="submit"
+        className="mt-3 rounded-full border border-alarm/40 px-4 py-1.5 text-sm text-alarm transition-colors hover:border-alarm hover:bg-alarm/10"
+      >
         Delete my account
       </button>
     </form>

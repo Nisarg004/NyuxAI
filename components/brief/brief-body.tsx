@@ -13,9 +13,9 @@ type ItemsBySector = {
 
 /**
  * The brief itself, rendered the same way wherever it appears — inline on the
- * dashboard and on the archive detail page. Same content as the email: the
- * editor's note, then each sector with its items, why-it-matters, source links
- * and thumbs up/down.
+ * dashboard and on the archive detail page, always inside a morning `.sheet`.
+ * Same content as the email: the editor's note, then each sector with its
+ * items, why-it-matters, source links and feedback.
  */
 export function BriefBody({
   editorsNote,
@@ -31,9 +31,10 @@ export function BriefBody({
   return (
     <div>
       {editorsNote ? (
-        <p className="border-b border-rule py-6 font-display text-[1.0625rem] italic leading-[1.6] text-ink-soft">
-          {editorsNote}
-        </p>
+        <aside className="mb-6 rounded-[20px] bg-morning-2 px-5 py-4 sm:px-6 sm:py-5">
+          <p className="text-sm font-semibold text-ink">Editor&rsquo;s note</p>
+          <p className="mt-1.5 text-[1.0625rem] leading-[1.6] text-ink">{editorsNote}</p>
+        </aside>
       ) : null}
       {itemsBySector.map(({ sector, items }) => (
         <SectorSection

@@ -1,13 +1,19 @@
-import { Body, Column, Container, Head, Hr, Html, Link, Preview, Row, Section, Text } from "react-email";
+import { Body, Button, Container, Head, Hr, Html, Link, Preview, Section, Text } from "react-email";
 
-const INK = "#101425";
-const PAPER = "#EEF0F6";
-const AMBER = "#FFB020";
-const AMBER_TINT = "#FFF7E8";
-const SLATE = "#4B5163";
+const NIGHT = "#0D0F2B";
+const LINE = "#2A2E66";
+const STAR = "#ECEEFF";
+const HAZE = "#9EA3D6";
+const DAWN = "#FFBE8A";
+const AURORA = "#8C7BFF";
+const MORNING = "#F7F7FC";
+const MORNING_2 = "#ECEEF8";
+const INK = "#171A3F";
+const INK_SOFT = "#5B5F86";
+const RULE = "#DCDFEE";
 
-const MONO = "'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace";
-const SANS = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+const HEADING = "'Bricolage Grotesque', 'Helvetica Neue', Arial, sans-serif";
+const BODY = "'Geist', -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif";
 
 export type DigestEmailItem = {
   headline: string;
@@ -35,25 +41,73 @@ export type DigestEmailProps = {
   postalAddress?: string | null;
 };
 
-function SectorTag({ label }: { label: string }) {
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "the source";
+  }
+}
+
+function joinList(values: string[]): string {
+  if (values.length <= 1) return values.join("");
+  return `${values.slice(0, -1).join(", ")} and ${values[values.length - 1]}`;
+}
+
+function Wordmark({ size }: { size: number }) {
   return (
-    <span
-      style={{
-        display: "inline-block",
-        fontFamily: MONO,
-        fontSize: "11px",
-        letterSpacing: "0.06em",
-        color: AMBER,
-        border: `1px solid ${AMBER}`,
-        borderRadius: "3px",
-        padding: "3px 8px",
-        marginRight: "6px",
-        marginBottom: "6px",
-        textTransform: "uppercase",
-      }}
-    >
-      {label}
-    </span>
+    <Text style={{ fontFamily: HEADING, fontSize: `${size}px`, fontWeight: 700, lineHeight: `${size + 4}px`, margin: 0, color: STAR }}>
+      <span style={{ color: DAWN, fontSize: `${Math.round(size * 0.7)}px`, marginRight: "6px" }}>&#10022;</span>
+      nyux
+    </Text>
+  );
+}
+
+function StoryBlock({ item, last }: { item: DigestEmailItem; last: boolean }) {
+  return (
+    <Section style={{ margin: last ? "0" : "0 0 24px 0" }}>
+      <Text style={{ fontFamily: HEADING, fontSize: "19px", fontWeight: 700, color: INK, lineHeight: "25px", margin: "0 0 8px 0" }}>
+        {item.headline}
+      </Text>
+      <Text style={{ fontFamily: BODY, fontSize: "15px", color: INK_SOFT, lineHeight: "24px", margin: "0 0 14px 0" }}>
+        {item.summary}
+      </Text>
+      {item.whyItMatters ? (
+        <table
+          role="presentation"
+          width="100%"
+          cellPadding={0}
+          cellSpacing={0}
+          style={{ borderCollapse: "separate", margin: "0 0 12px 0" }}
+        >
+          <tbody>
+            <tr>
+              <td
+                style={{
+                  backgroundColor: MORNING_2,
+                  borderLeft: `3px solid ${AURORA}`,
+                  borderRadius: "12px",
+                  padding: "12px 16px",
+                }}
+              >
+                <Text style={{ fontFamily: BODY, fontSize: "13px", fontWeight: 600, color: INK, lineHeight: "18px", margin: "0 0 4px 0" }}>
+                  Why it matters
+                </Text>
+                <Text style={{ fontFamily: BODY, fontSize: "14px", color: INK, lineHeight: "22px", margin: 0 }}>
+                  {item.whyItMatters}
+                </Text>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      ) : null}
+      <Text style={{ fontFamily: BODY, fontSize: "13px", lineHeight: "18px", margin: 0 }}>
+        <Link href={item.sourceUrl} style={{ color: INK, fontWeight: 600, textDecoration: "underline" }}>
+          Read the source at {hostOf(item.sourceUrl)}
+        </Link>
+      </Text>
+      {last ? null : <Hr style={{ borderTop: `1px solid ${RULE}`, margin: "24px 0 0 0" }} />}
+    </Section>
   );
 }
 
@@ -69,59 +123,35 @@ export function DigestEmail({
   unsubscribeUrl,
   postalAddress,
 }: DigestEmailProps) {
+  const footerLink = { color: INK_SOFT, fontWeight: 600, textDecoration: "underline" } as const;
+
   return (
     <Html>
       <Head />
-      <Preview>{editorsNote || `Your briefing for ${dateLabel}`}</Preview>
-      <Body style={{ backgroundColor: PAPER, margin: 0, padding: 0, fontFamily: SANS }}>
-        <Container style={{ maxWidth: "600px", margin: "0 auto", backgroundColor: PAPER }}>
-          {/* Header */}
-          <Section style={{ backgroundColor: INK, padding: "32px 28px" }}>
-            <Text
-              style={{
-                fontFamily: MONO,
-                fontSize: "12px",
-                letterSpacing: "0.08em",
-                color: AMBER,
-                margin: "0 0 12px 0",
-                textTransform: "uppercase",
-              }}
-            >
-              {dateLabel} · {timeLabel}
+      <Preview>{editorsNote || `Your brief for ${dateLabel}`}</Preview>
+      <Body style={{ backgroundColor: MORNING, margin: 0, padding: 0, fontFamily: BODY }}>
+        <Container style={{ maxWidth: "600px", margin: "0 auto", backgroundColor: MORNING }}>
+          {/* Night header band */}
+          <Section style={{ backgroundColor: NIGHT, padding: "28px 32px 32px 32px" }}>
+            <Wordmark size={22} />
+            <Hr style={{ borderTop: `1px solid ${LINE}`, margin: "22px 0 20px 0" }} />
+            <Text style={{ fontFamily: BODY, fontSize: "13px", color: HAZE, lineHeight: "18px", margin: "0 0 8px 0" }}>
+              {dateLabel} at {timeLabel}
             </Text>
-            <Text
-              style={{
-                fontFamily: SANS,
-                fontSize: "24px",
-                fontWeight: 700,
-                color: "#FFFFFF",
-                margin: "0 0 14px 0",
-              }}
-            >
-              {userName}&rsquo;s brief
+            <Text style={{ fontFamily: HEADING, fontSize: "28px", fontWeight: 700, color: STAR, lineHeight: "32px", margin: "0 0 10px 0" }}>
+              Hi {userName}, here&rsquo;s your brief.
             </Text>
-            <Row>
-              <Column>
-                {sectors.map((sector) => (
-                  <SectorTag key={sector} label={sector} />
-                ))}
-              </Column>
-            </Row>
+            {sectors.length > 0 ? (
+              <Text style={{ fontFamily: BODY, fontSize: "15px", color: HAZE, lineHeight: "22px", margin: 0 }}>
+                Today&rsquo;s brief covers {joinList(sectors)}.
+              </Text>
+            ) : null}
           </Section>
 
           {/* Editor's note */}
           {editorsNote ? (
-            <Section style={{ padding: "24px 28px 0 28px" }}>
-              <Text
-                style={{
-                  fontFamily: SANS,
-                  fontSize: "14px",
-                  fontStyle: "italic",
-                  color: SLATE,
-                  margin: 0,
-                  lineHeight: "22px",
-                }}
-              >
+            <Section style={{ padding: "28px 32px 0 32px" }}>
+              <Text style={{ fontFamily: BODY, fontSize: "15px", fontStyle: "italic", color: INK_SOFT, lineHeight: "24px", margin: 0 }}>
                 {editorsNote}
               </Text>
             </Section>
@@ -129,117 +159,75 @@ export function DigestEmail({
 
           {/* Sectors */}
           {sectorGroups.map((group) => (
-            <Section key={group.sector} style={{ padding: "20px 28px 0 28px" }}>
+            <Section key={group.sector} style={{ padding: "32px 32px 0 32px" }}>
               <Text
                 style={{
-                  fontFamily: MONO,
-                  fontSize: "12px",
-                  letterSpacing: "0.08em",
+                  fontFamily: HEADING,
+                  fontSize: "22px",
+                  fontWeight: 700,
                   color: INK,
-                  textTransform: "uppercase",
-                  borderBottom: `2px solid ${AMBER}`,
-                  paddingBottom: "6px",
-                  margin: "0 0 16px 0",
+                  lineHeight: "28px",
+                  borderBottom: `1px solid ${RULE}`,
+                  paddingBottom: "10px",
+                  margin: "0 0 20px 0",
                 }}
               >
                 {group.sector}
               </Text>
 
               {group.items.length === 0 ? (
-                <Text
-                  style={{
-                    fontFamily: SANS,
-                    fontSize: "14px",
-                    fontStyle: "italic",
-                    color: SLATE,
-                    margin: "0 0 8px 0",
-                  }}
-                >
+                <Text style={{ fontFamily: BODY, fontSize: "15px", fontStyle: "italic", color: INK_SOFT, margin: 0 }}>
                   Nothing in {group.sector} cleared our bar today.
                 </Text>
               ) : null}
 
               {group.items.map((item, idx) => (
-                <Section key={item.sourceUrl} style={{ margin: "0 0 20px 0" }}>
-                  <Link
-                    href={item.sourceUrl}
-                    style={{
-                      fontFamily: SANS,
-                      fontSize: "16px",
-                      fontWeight: 700,
-                      color: INK,
-                      textDecoration: "none",
-                      lineHeight: "22px",
-                    }}
-                  >
-                    {item.headline}
-                  </Link>
-                  <Text
-                    style={{
-                      fontFamily: SANS,
-                      fontSize: "14px",
-                      color: SLATE,
-                      margin: "8px 0",
-                      lineHeight: "21px",
-                    }}
-                  >
-                    {item.summary}
-                  </Text>
-                  <table
-                    role="presentation"
-                    width="100%"
-                    cellPadding={0}
-                    cellSpacing={0}
-                    style={{ backgroundColor: AMBER_TINT, borderLeft: `3px solid ${AMBER}` }}
-                  >
-                    <tbody>
-                      <tr>
-                        <td style={{ padding: "10px 14px" }}>
-                          <Text
-                            style={{
-                              fontFamily: MONO,
-                              fontSize: "10px",
-                              letterSpacing: "0.06em",
-                              color: AMBER,
-                              textTransform: "uppercase",
-                              margin: "0 0 4px 0",
-                            }}
-                          >
-                            Why it matters
-                          </Text>
-                          <Text style={{ fontFamily: SANS, fontSize: "13px", color: INK, margin: 0, lineHeight: "19px" }}>
-                            {item.whyItMatters}
-                          </Text>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                  {idx < group.items.length - 1 ? <Hr style={{ borderTop: "1px solid #D9DCE6", margin: "20px 0 0 0" }} /> : null}
-                </Section>
+                <StoryBlock key={item.sourceUrl} item={item} last={idx === group.items.length - 1} />
               ))}
             </Section>
           ))}
 
+          {/* Call to action */}
+          <Section style={{ padding: "36px 32px 8px 32px", textAlign: "center" }}>
+            <Button
+              href={archiveUrl}
+              style={{
+                backgroundColor: DAWN,
+                color: NIGHT,
+                fontFamily: BODY,
+                fontSize: "15px",
+                fontWeight: 600,
+                lineHeight: "20px",
+                textDecoration: "none",
+                borderRadius: "999px",
+                padding: "14px 28px",
+              }}
+            >
+              Open in Nyux
+            </Button>
+          </Section>
+
           {/* Footer */}
-          <Section style={{ padding: "28px", marginTop: "8px" }}>
-            <Hr style={{ borderTop: "1px solid #D9DCE6", margin: "0 0 20px 0" }} />
-            <Text style={{ fontFamily: SANS, fontSize: "12px", color: SLATE, margin: "0 0 8px 0" }}>
-              <Link href={archiveUrl} style={{ color: INK, fontWeight: 600, textDecoration: "underline" }}>
-                View in archive
-              </Link>
-              {"  ·  "}
-              <Link href={preferencesUrl} style={{ color: INK, fontWeight: 600, textDecoration: "underline" }}>
+          <Section style={{ padding: "28px 32px 36px 32px" }}>
+            <Hr style={{ borderTop: `1px solid ${RULE}`, margin: "0 0 20px 0" }} />
+            <Text style={{ fontFamily: BODY, fontSize: "13px", color: INK_SOFT, lineHeight: "20px", margin: "0 0 10px 0" }}>
+              <Link href={preferencesUrl} style={footerLink}>
                 Manage preferences
               </Link>
-              {"  ·  "}
-              <Link href={unsubscribeUrl} style={{ color: INK, fontWeight: 600, textDecoration: "underline" }}>
+              <span style={{ display: "inline-block", width: "20px" }}>&nbsp;</span>
+              <Link href={unsubscribeUrl} style={footerLink}>
                 Unsubscribe
               </Link>
             </Text>
             {postalAddress ? (
-              <Text style={{ fontFamily: SANS, fontSize: "11px", color: SLATE, margin: "0 0 8px 0" }}>{postalAddress}</Text>
+              <Text style={{ fontFamily: BODY, fontSize: "12px", color: INK_SOFT, lineHeight: "18px", margin: "0 0 10px 0" }}>
+                {postalAddress}
+              </Text>
             ) : null}
-            <Text style={{ fontFamily: MONO, fontSize: "11px", color: "#9AA0B4", margin: 0 }}>BRIEFF</Text>
+            <Text style={{ fontFamily: HEADING, fontSize: "13px", fontWeight: 700, color: INK_SOFT, margin: 0 }}>
+              <span style={{ color: AURORA, marginRight: "4px" }}>&#10022;</span>
+              nyux
+            </Text>
           </Section>
         </Container>
       </Body>

@@ -15,7 +15,7 @@ export async function renderDigestEmail(props: {
   postalAddress?: string | null;
 }): Promise<{ html: string; subject: string }> {
   const local = DateTime.fromJSDate(props.sentAt, { zone: props.timezone });
-  const dateLabel = local.toFormat("ccc d LLL yyyy").toUpperCase();
+  const dateLabel = local.toFormat("cccc d LLLL");
   const timeLabel = local.toFormat("HH:mm");
 
   const emailProps: DigestEmailProps = {
@@ -32,7 +32,10 @@ export async function renderDigestEmail(props: {
   };
 
   const html = await render(<DigestEmail {...emailProps} />);
-  const subject = `${props.sectors.join(" · ")} — ${local.toFormat("d LLL")} brief`;
+  const desks = props.sectors.length > 1
+    ? `${props.sectors.slice(0, -1).join(", ")} and ${props.sectors[props.sectors.length - 1]}`
+    : props.sectors.join("");
+  const subject = `Your brief for ${local.toFormat("d LLL")}: ${desks}`;
 
   return { html, subject };
 }

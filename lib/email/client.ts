@@ -6,4 +6,4 @@ if (!apiKey) {
 }
 
 export const resend = new Resend(apiKey);
-export const EMAIL_FROM = process.env.EMAIL_FROM ?? "Brieff <onboarding@resend.dev>";
+export const EMAIL_FROM = process.env.EMAIL_FROM ?? "Nyux <onboarding@resend.dev>";

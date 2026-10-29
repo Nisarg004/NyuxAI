@@ -21,8 +21,8 @@ async function sendEmail(to: string, link: string): Promise<void> {
   const { error } = await resend.emails.send({
     from: EMAIL_FROM,
     to,
-    subject: "Your Brieff sign-in link",
-    text: `Use this link to sign in to Brieff. It works once and expires in 30 minutes.\n\n${link}\n\nIf you didn't ask for this, you can ignore this email.`,
+    subject: "Your Nyux sign-in link",
+    text: `Use this link to sign in to Nyux. It works once and expires in 30 minutes.\n\n${link}\n\nIf you didn't ask for this, you can ignore this email.`,
   });
   if (error) throw new Error(`Failed to send sign-in email: ${error.message}`);
 }

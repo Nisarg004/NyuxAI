@@ -20,6 +20,7 @@ export function PreferencesCard(props: {
   const [sectors, setSectors] = useState(props.sectors);
   const pad = (n: number) => n.toString().padStart(2, "0");
   const currentTime = `${pad(props.deliveryHour)}:${pad(props.deliveryMinute)}`;
+  const depthLabel = props.depth.charAt(0).toUpperCase() + props.depth.slice(1);
 
   const toggleSector = (sector: string) => {
     setSectors((prev) => (prev.includes(sector) ? prev.filter((s) => s !== sector) : [...prev, sector]));
@@ -28,21 +29,30 @@ export function PreferencesCard(props: {
   if (!editing) {
     return (
       <section>
-        <div className="flex items-baseline justify-between">
-          <h2 className="font-display text-sm italic text-ink-soft">Standing instructions</h2>
-          <button
-            onClick={() => setEditing(true)}
-            className="text-sm text-editor underline decoration-editor/40 underline-offset-4 hover:decoration-editor"
-          >
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="font-display text-lg font-semibold text-star">Your brief</h2>
+          <Button variant="ghost" size="sm" onClick={() => setEditing(true)} className="rounded-full px-3 text-aurora hover:text-star">
             Edit
-          </button>
+          </Button>
         </div>
-        <p className="mt-2 text-[1.0625rem] leading-[1.7] text-ink">
-          {formatSectorList(SECTORS.filter((s) => props.sectors.includes(s)))} desks, at{" "}
-          {currentTime} your time. <span className="capitalize">{props.depth}</span> depth.
-        </p>
+        <dl className="mt-3 space-y-2.5 text-sm">
+          <div>
+            <dt className="text-haze">Topics</dt>
+            <dd className="mt-0.5 text-star">{formatSectorList(SECTORS.filter((s) => props.sectors.includes(s)))}</dd>
+          </div>
+          <div className="flex gap-6">
+            <div>
+              <dt className="text-haze">Arrives at</dt>
+              <dd className="mt-0.5 text-star">{currentTime} your time</dd>
+            </div>
+            <div>
+              <dt className="text-haze">Depth</dt>
+              <dd className="mt-0.5 text-star">{depthLabel}</dd>
+            </div>
+          </div>
+        </dl>
         {!props.isActive && (
-          <p className="mt-2 text-sm text-editor">
+          <p className="mt-4 rounded-2xl border border-dawn/30 bg-dawn/10 px-3.5 py-2.5 text-sm leading-[1.5] text-dawn">
             Paused: you unsubscribed, so no briefs are being sent. Edit and save to resume.
           </p>
         )}
@@ -56,51 +66,54 @@ export function PreferencesCard(props: {
         await updatePreferences(formData);
         setEditing(false);
       }}
-      className="border-l-2 border-editor pl-4"
     >
-      <h2 className="font-display text-sm italic text-ink-soft">Editing standing instructions</h2>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {SECTORS.map((sector) => (
-          <button
-            key={sector}
-            type="button"
-            onClick={() => toggleSector(sector)}
-            aria-pressed={sectors.includes(sector)}
-            className={`rounded-[3px] border px-2.5 py-1 text-sm transition-colors ${
-              sectors.includes(sector)
-                ? "border-ink bg-ink text-paper"
-                : "border-rule text-ink-soft hover:border-ink hover:text-ink"
-            }`}
-          >
-            {sector}
-          </button>
-        ))}
-      </div>
+      <h2 className="font-display text-lg font-semibold text-star">Edit your brief</h2>
+      <fieldset className="mt-3">
+        <legend className="text-sm text-haze">Topics</legend>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {SECTORS.map((sector) => {
+            const selected = sectors.includes(sector);
+            return (
+              <button
+                key={sector}
+                type="button"
+                onClick={() => toggleSector(sector)}
+                aria-pressed={selected}
+                className={`rounded-full border px-3.5 py-1.5 text-sm transition-colors ${
+                  selected
+                    ? "border-dawn bg-dawn font-medium text-night"
+                    : "border-line text-haze hover:border-haze hover:text-star"
+                }`}
+              >
+                {sector}
+              </button>
+            );
+          })}
+        </div>
+      </fieldset>
       {sectors.map((s) => (
         <input key={s} type="hidden" name="sectors" value={s} />
       ))}
-      <div className="mt-4 grid max-w-md grid-cols-2 gap-3">
+      <div className="mt-4 grid grid-cols-1 gap-3 min-[400px]:grid-cols-2 lg:grid-cols-1">
         <div className="space-y-1.5">
-          <Label htmlFor="pref-time" className="text-ink-soft">Delivery time</Label>
-          <Input id="pref-time" name="time" type="time" defaultValue={currentTime} required className="rounded-[3px]" />
+          <Label htmlFor="pref-time" className="text-haze">Delivery time</Label>
+          <Input id="pref-time" name="time" type="time" defaultValue={currentTime} required />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="pref-timezone" className="text-ink-soft">Timezone</Label>
-          <Input id="pref-timezone" name="timezone" type="text" defaultValue={props.timezone} required className="rounded-[3px]" />
+          <Label htmlFor="pref-timezone" className="text-haze">Timezone</Label>
+          <Input id="pref-timezone" name="timezone" type="text" defaultValue={props.timezone} required />
         </div>
       </div>
-      <div className="mt-4 flex gap-2">
-        <Button
-          type="submit"
-          disabled={sectors.length === 0}
-          className="rounded-[3px] bg-ink px-4 text-paper hover:bg-editor"
-        >
+      {sectors.length === 0 ? (
+        <p className="mt-3 text-sm text-alarm">Pick at least one topic.</p>
+      ) : null}
+      <div className="mt-5 flex flex-wrap gap-2">
+        <Button type="submit" disabled={sectors.length === 0}>
           Save
         </Button>
         <Button
           type="button"
           variant="ghost"
-          className="rounded-[3px] text-ink-soft hover:text-ink"
           onClick={() => {
             setSectors(props.sectors);
             setEditing(false);

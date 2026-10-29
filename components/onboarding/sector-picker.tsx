@@ -19,10 +19,10 @@ export function SectorPicker({ initialSelected = [] }: { initialSelected?: strin
             type="button"
             onClick={() => toggle(sector)}
             aria-pressed={selected.includes(sector)}
-            className={`rounded-[3px] border px-3 py-1.5 text-sm transition-colors ${
+            className={`h-9 rounded-full border px-4 text-sm font-medium transition-colors ${
               selected.includes(sector)
-                ? "border-ink bg-ink text-paper"
-                : "border-rule text-ink-soft hover:border-ink hover:text-ink"
+                ? "border-dawn bg-dawn text-night"
+                : "border-line text-haze hover:border-haze hover:text-star"
             }`}
           >
             {sector}
@@ -33,7 +33,7 @@ export function SectorPicker({ initialSelected = [] }: { initialSelected?: strin
         <input key={s} type="hidden" name="sectors" value={s} />
       ))}
       {selected.length === 0 ? (
-        <p className="mt-2 text-sm text-editor">Choose at least one desk.</p>
+        <p className="mt-3 text-sm text-haze">Choose at least one desk.</p>
       ) : null}
     </div>
   );

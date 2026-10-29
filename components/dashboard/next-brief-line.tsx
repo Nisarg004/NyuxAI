@@ -5,7 +5,7 @@ import { DateTime } from "luxon";
 import { getCountdownDisplay, formatRemainingHuman } from "@/lib/countdown";
 import { safeTimezone } from "@/lib/schedule";
 
-/** One line above the brief: "Your next brief: today at 20:00 · in 3 hours 41 minutes". */
+/** One line under the greeting: "Your next brief arrives today at 20:00, in 3 hours 41 minutes." */
 export function NextBriefLine(props: {
   sectors: string[];
   deliveryHour: number;
@@ -29,11 +29,11 @@ export function NextBriefLine(props: {
 
   let text: string;
   if (display === null) {
-    text = "Your next brief: loading…";
+    text = "Checking when your next brief arrives…";
   } else if (display.mode === "unscheduled") {
-    text = "No delivery time set yet — add one in your brief settings below.";
+    text = "No delivery time set yet. Add one in your brief settings.";
   } else if (display.mode === "due") {
-    text = "Your next brief: going to press now.";
+    text = "Your next brief is being written now.";
   } else {
     const next = props.nextRunAt ? DateTime.fromISO(props.nextRunAt, { zone }) : null;
     const today = DateTime.now().setZone(zone);
@@ -44,12 +44,13 @@ export function NextBriefLine(props: {
         : next.hasSame(today.plus({ days: 1 }), "day")
           ? "tomorrow"
           : next.toFormat("cccc");
-    text = `Your next brief: ${day ? `${day} at ` : ""}${display.timeLabel} · ${formatRemainingHuman(display.remainingMs)}`;
+    text = `Your next brief arrives ${day ? `${day} at ` : "at "}${display.timeLabel}, ${formatRemainingHuman(display.remainingMs)}.`;
   }
 
   return (
-    <p className="text-sm text-ink-soft" suppressHydrationWarning>
-      {text}
+    <p className="flex items-start gap-2.5 text-[1.0625rem] leading-[1.5] text-haze" suppressHydrationWarning>
+      <span className="mt-[0.55em] size-2 shrink-0 rounded-full bg-dawn shadow-[0_0_12px_rgb(255_190_138/0.8)]" aria-hidden />
+      <span>{text}</span>
     </p>
   );
 }

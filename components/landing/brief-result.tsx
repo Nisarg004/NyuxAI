@@ -6,36 +6,38 @@ export function BriefResult({ brief }: { brief: LandingBrief }) {
 
   if (!hasItems) {
     return (
-      <p className="mt-8 text-[1.0625rem] leading-[1.7] text-ink-soft">
-        Nothing in those desks cleared the bar in the last day. A standing brief pulls from more
-        sources and more time — set one up and tomorrow&rsquo;s edition will have more to work with.
+      <p className="mt-6 rounded-[14px] border border-line bg-night-2 p-5 text-[0.975rem] leading-[1.6] text-haze">
+        Nothing on those desks cleared the editor in the last day. A daily brief draws on more sources and
+        more time, so tomorrow&rsquo;s will have more to work with.
       </p>
     );
   }
 
   return (
-    <div className="mt-8 max-w-2xl">
+    <div className="sheet mt-6 p-6 animate-in fade-in-0 slide-in-from-bottom-4 duration-700 sm:p-10">
       {brief.editorsNote ? (
-        <p className="border-b border-ink pb-5 font-display text-[1.05rem] italic leading-[1.6] text-ink">
+        <p className="mb-8 border-l-2 border-aurora pl-4 text-[1.05rem] leading-[1.6] text-ink">
           {brief.editorsNote}
         </p>
       ) : null}
-      {brief.sectors
-        .filter((s) => s.items.length > 0)
-        .map((s) => (
-          <SectorSection
-            key={s.sector}
-            sector={s.sector}
-            readOnly
-            items={s.items.map((i) => ({
-              id: i.sourceUrl,
-              headline: i.headline,
-              summary: i.summary,
-              whyItMatters: i.whyItMatters,
-              sourceUrl: i.sourceUrl,
-            }))}
-          />
-        ))}
+      <div className="space-y-10">
+        {brief.sectors
+          .filter((s) => s.items.length > 0)
+          .map((s) => (
+            <SectorSection
+              key={s.sector}
+              sector={s.sector}
+              readOnly
+              items={s.items.map((i) => ({
+                id: i.sourceUrl,
+                headline: i.headline,
+                summary: i.summary,
+                whyItMatters: i.whyItMatters,
+                sourceUrl: i.sourceUrl,
+              }))}
+            />
+          ))}
+      </div>
     </div>
   );
 }

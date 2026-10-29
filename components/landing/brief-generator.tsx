@@ -29,8 +29,10 @@ export function BriefGenerator() {
   const atCap = selected.length >= MAX_SECTORS;
 
   return (
-    <section className="mt-10">
-      <div className="flex flex-wrap gap-2">
+    <section className="min-w-0">
+      <div className="panel p-6 sm:p-8">
+      <p className="text-sm font-medium text-star">Your desks</p>
+      <div className="mt-3 flex flex-wrap gap-2">
         {SECTORS.map((sector) => {
           const on = selected.includes(sector);
           return (
@@ -40,8 +42,8 @@ export function BriefGenerator() {
               onClick={() => toggle(sector)}
               disabled={running || (!on && atCap)}
               aria-pressed={on}
-              className={`rounded-[3px] border px-3 py-1.5 text-sm transition-colors disabled:opacity-40 ${
-                on ? "border-ink bg-ink text-paper" : "border-rule text-ink-soft hover:border-ink hover:text-ink"
+              className={`rounded-full border px-4 py-2 text-sm transition-colors disabled:opacity-40 ${
+                on ? "border-dawn bg-dawn text-night" : "border-line text-haze hover:border-haze hover:text-star"
               }`}
             >
               {sector}
@@ -49,49 +51,56 @@ export function BriefGenerator() {
           );
         })}
       </div>
-      <p className="mt-2 text-sm text-ink-soft">
-        Pick one to three desks{atCap ? " — that's the limit for a sample" : ""}.
+      <p className="mt-2.5 text-sm text-haze">
+        {atCap ? "Three is the limit for a sample brief." : "Pick one to three."}
       </p>
 
-      <div className="mt-4 max-w-md">
+      <label htmlFor="landing-role" className="mt-6 block text-sm font-medium text-star">
+        What you do <span className="font-normal text-haze">(optional)</span>
+      </label>
+      <div className="mt-2 max-w-md">
         <Input
+          id="landing-role"
           type="text"
           value={role}
           onChange={(e) => setRole(e.target.value)}
           disabled={running}
-          placeholder="What you do — e.g. Product manager"
-          className="rounded-[3px]"
+          placeholder="Product manager at a fintech"
         />
       </div>
+      <p className="mt-2 text-sm text-haze">With a role, each story says why it matters to your job.</p>
 
       <Button
         onClick={() => start({ sectors: selected, roleTitle: role })}
         disabled={running || selected.length === 0}
-        className="mt-4 rounded-[3px] bg-ink px-5 py-2.5 text-paper hover:bg-editor"
+        size="lg"
+        className="mt-7"
       >
-        {running ? "The desk is working…" : "Show me today's brief"}
+        {running ? "Building your brief…" : "Build my brief"}
       </Button>
+      </div>
 
-      {status !== "idle" && status !== "error" ? <PipelineProgress summary={summary} /> : null}
+      {running ? <PipelineProgress summary={summary} /> : null}
 
       {status === "error" && rateLimit ? (
-        <p className="mt-6 text-[1.0625rem] leading-[1.7] text-ink-soft">
-          You&rsquo;ve run a few sample briefs recently. Try again in about {rateLimit.retryAfterMinutes}{" "}
-          {rateLimit.retryAfterMinutes === 1 ? "minute" : "minutes"} — or{" "}
-          <Link href="/onboarding" className="text-editor underline decoration-editor/40 underline-offset-4">
-            set one up now
+        <p role="alert" className="mt-6 rounded-[14px] border border-line bg-night-2 p-4 text-[0.975rem] leading-[1.6] text-haze">
+          You&rsquo;ve built a few sample briefs in the last hour. Try again in about {rateLimit.retryAfterMinutes}{" "}
+          {rateLimit.retryAfterMinutes === 1 ? "minute" : "minutes"}, or{" "}
+          <Link href="/onboarding" className="text-aurora underline underline-offset-4">
+            sign up for a daily one
           </Link>
           .
         </p>
       ) : null}
 
       {status === "error" && !rateLimit ? (
-        <div className="mt-6 text-[1.0625rem] leading-[1.7] text-ink-soft">
-          <p>{error ?? "The desk couldn't assemble a brief just now."}</p>
+        <div role="alert" className="mt-6 rounded-[14px] border border-alarm/40 bg-alarm/10 p-4 text-[0.975rem] leading-[1.6] text-star">
+          <p>{error ?? "The brief couldn't be built just now. Try again in a moment."}</p>
           <Button
             onClick={() => start({ sectors: selected, roleTitle: role })}
             disabled={selected.length === 0}
-            className="mt-3 rounded-[3px] border border-ink bg-transparent px-4 text-ink hover:bg-ink hover:text-paper"
+            variant="outline"
+            className="mt-3"
           >
             Try again
           </Button>

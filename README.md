@@ -1,10 +1,10 @@
-# Brieff
+# Nyux
 
-A personalised daily news brief, built by a multi-agent LLM pipeline, with a source link on every item.
+Nyux (formerly Brieff) is a personalised daily news brief, built by a multi-agent LLM pipeline, with a source link on every item.
 
 ## What it does
 
-Readers pick sectors (or describe their role), a delivery time and a reading depth. Brieff
+Readers pick sectors (or describe their role), a delivery time and a reading depth. Nyux
 pulls dozens of RSS feeds every 30 minutes and groups articles from different outlets
 that cover the same story. At each reader's local delivery time it emails a sourced brief,
 which is also kept in an in-app archive. Every claim is checked against the source text before

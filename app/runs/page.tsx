@@ -8,28 +8,28 @@ export default async function RunsPage() {
   const runs = await listRuns();
 
   return (
-    <>
+    <div className="horizon flex min-h-screen flex-1 flex-col">
       <Nav current="runs" isAdmin />
-      <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-10">
-        <header className="max-w-2xl border-b border-ink pb-5">
-          <h1 className="font-display text-[2rem] font-semibold leading-[1.15] tracking-[-0.01em] text-ink">
-            The newsroom log
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10 sm:px-6 sm:py-14">
+        <header className="max-w-2xl">
+          <h1 className="font-display text-[clamp(2rem,4vw,3.25rem)] font-bold leading-none tracking-[-0.03em] text-star">
+            Runs
           </h1>
-          <p className="mt-2 font-display italic text-ink-soft">
-            Every pipeline run, most recent first. Open one for the stage-by-stage record.
+          <p className="mt-3 text-[1.0625rem] leading-[1.65] text-haze">
+            Every pipeline run, newest first. Open one for the stage-by-stage record.
           </p>
         </header>
 
-        <div className="mt-6 overflow-x-auto">
-          <table className="w-full min-w-[42rem] border-collapse text-left">
+        <div className="panel mt-8 overflow-x-auto">
+          <table className="w-full min-w-[44rem] border-collapse text-left">
             <thead>
-              <tr className="border-b border-ink text-sm text-ink-soft">
-                <th className="py-2 pr-4 font-normal">Kind</th>
-                <th className="py-2 pr-4 font-normal">User</th>
-                <th className="py-2 pr-4 font-normal">Started</th>
-                <th className="py-2 pr-4 font-normal">Duration</th>
-                <th className="py-2 pr-4 font-normal">Tokens</th>
-                <th className="py-2 pr-0 font-normal">Status</th>
+              <tr className="border-b border-line text-sm text-haze">
+                <th scope="col" className="py-3 pr-4 pl-5 font-medium">Kind</th>
+                <th scope="col" className="py-3 pr-4 font-medium">User</th>
+                <th scope="col" className="py-3 pr-4 font-medium">Started</th>
+                <th scope="col" className="py-3 pr-4 font-medium">Duration</th>
+                <th scope="col" className="py-3 pr-4 text-right font-medium">Tokens</th>
+                <th scope="col" className="py-3 pr-5 font-medium">Status</th>
               </tr>
             </thead>
             <tbody>
@@ -38,8 +38,9 @@ export default async function RunsPage() {
               ))}
             </tbody>
           </table>
+          {runs.length === 0 ? <p className="px-5 py-6 text-sm text-haze">No runs yet.</p> : null}
         </div>
       </main>
-    </>
+    </div>
   );
 }

@@ -19,25 +19,29 @@ export function EmailCapture({ sectors, roleTitle }: { sectors: string[]; roleTi
   };
 
   return (
-    <form onSubmit={go} className="mt-14 border-t border-ink pt-6">
-      <p className="font-display text-[1.3rem] font-semibold leading-[1.2] tracking-[-0.01em] text-ink">
-        Get this every day, at a time you pick.
+    <form onSubmit={go} className="panel mt-6 p-6 sm:p-8">
+      <p className="font-display text-2xl font-bold leading-[1.15] tracking-[-0.03em] text-star">
+        Get this every day, at the hour you read.
       </p>
-      <p className="mt-2 max-w-lg text-[1.0625rem] leading-[1.7] text-ink/90">
-        Same four editors, same desks, delivered to your inbox at the hour you actually sit down to read.
-        Thumbs up or down on any story and the next edition shifts.
+      <p className="mt-2 max-w-lg text-[0.975rem] leading-[1.6] text-haze">
+        Same desks, same four agents, in your inbox each morning. Thumbs up or down on any story and the next
+        brief adjusts.
       </p>
-      <div className="mt-4 flex flex-wrap gap-3">
+      <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+        <label htmlFor="capture-email" className="sr-only">
+          Email address
+        </label>
         <Input
+          id="capture-email"
           type="email"
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@work.com"
-          className="w-64 rounded-[3px]"
+          className="sm:max-w-xs"
         />
-        <Button type="submit" className="rounded-[3px] bg-ink px-5 text-paper hover:bg-editor">
-          Set up my brief
+        <Button type="submit" size="lg">
+          Send me this daily
         </Button>
       </div>
     </form>

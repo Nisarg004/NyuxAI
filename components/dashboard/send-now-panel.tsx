@@ -3,18 +3,19 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { PipelineProgress } from "@/components/pipeline-progress";
 import { useSendNow } from "@/lib/hooks/use-send-now";
 
-/** A quiet off-schedule re-run. The dashboard leads with the brief itself;
- * this is a single line beneath it for pulling the next edition forward. */
+/** A quiet off-schedule re-run in the side column, for pulling the next
+ * brief forward. The dashboard leads with the brief itself. */
 export function SendNowPanel() {
   const { status, result, start, summary } = useSendNow();
   const router = useRouter();
 
   useEffect(() => {
     if (status === "done") {
-      toast.success(result?.sent ? "Edition sent." : (result?.note ?? "Done — nothing to send."));
+      toast.success(result?.sent ? "Brief sent." : (result?.note ?? "Done. Nothing new to send."));
       router.refresh();
     }
     if (status === "error") {
@@ -24,13 +25,13 @@ export function SendNowPanel() {
 
   return (
     <section>
-      <button
-        onClick={start}
-        disabled={status === "running"}
-        className="text-sm text-editor underline decoration-editor/40 underline-offset-4 hover:decoration-editor disabled:text-ink-soft disabled:no-underline"
-      >
-        {status === "running" ? "Going to press…" : "Bring the next edition forward →"}
-      </button>
+      <h2 className="font-display text-lg font-semibold text-star">Can&rsquo;t wait?</h2>
+      <p className="mt-1 text-sm leading-[1.55] text-haze">
+        Build and send a fresh brief now instead of waiting for your usual time.
+      </p>
+      <Button variant="outline" onClick={start} disabled={status === "running"} className="mt-3">
+        {status === "running" ? "Writing your brief…" : "Send me a brief now"}
+      </Button>
 
       {status !== "idle" ? <PipelineProgress summary={summary} /> : null}
     </section>

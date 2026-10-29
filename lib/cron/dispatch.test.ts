@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { preferences, users } from "@/lib/db/schema";
-import { claimDueRun } from "@/lib/cron/dispatch";
+import { claimDueRun, planSlot, type DueUser } from "@/lib/cron/dispatch";
 
 // A DB-integration test: it exercises the real atomic UPDATE against whatever
 // DATABASE_URL points at (the dev database). It creates one throwaway user,
@@ -75,3 +75,36 @@ test(
     assert.equal(stale, false, "a claim against the already-rolled slot must fail");
   }
 );
+
+// 08:00 in Kolkata is 02:30 UTC.
+const slotUser = (dueRunAt: Date): DueUser => ({
+  userId: "u",
+  email: "e",
+  dueRunAt,
+  deliveryHour: 8,
+  deliveryMinute: 0,
+  timezone: "Asia/Kolkata",
+});
+
+test("a due slot within the lead window is delivered and rolls to the following day", () => {
+  const due = new Date("2026-10-30T02:30:00.000Z");
+  const plan = planSlot(slotUser(due), new Date("2026-10-30T02:00:00.000Z"));
+  assert.equal(plan.deliver, true);
+  assert.equal(plan.nextRunAt.toISOString(), "2026-10-31T02:30:00.000Z");
+});
+
+test("a slot run late by a slow cron (under 3h) is still delivered", () => {
+  const due = new Date("2026-10-30T02:30:00.000Z");
+  const plan = planSlot(slotUser(due), new Date("2026-10-30T04:00:00.000Z"));
+  assert.equal(plan.deliver, true);
+  assert.equal(plan.nextRunAt.toISOString(), "2026-10-31T02:30:00.000Z");
+});
+
+test("a slot weeks stale is skipped and jumps to the next future slot, not the next day", () => {
+  const due = new Date("2026-09-06T02:30:00.000Z");
+  const now = new Date("2026-10-30T05:00:00.000Z");
+  const plan = planSlot(slotUser(due), now);
+  assert.equal(plan.deliver, false);
+  assert.equal(plan.nextRunAt.toISOString(), "2026-10-31T02:30:00.000Z");
+  assert.ok(plan.nextRunAt > now);
+});

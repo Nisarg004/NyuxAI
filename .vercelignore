@@ -1,0 +1,10 @@
+.env*
+!.env.example
+files
+docs
+.claude
+.superpowers
+.next
+node_modules
+tsconfig.tsbuildinfo
+scripts/_tmp-*

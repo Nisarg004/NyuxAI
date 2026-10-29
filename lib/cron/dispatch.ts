@@ -30,6 +30,11 @@ import { computeNextRunAt } from "@/lib/schedule";
 
 export const LEAD_MS = 45 * 60 * 1000;
 
+// A slot further in the past than this was missed (scheduler down, deploy gap), not
+// merely run late by a slow cron. It is skipped, not delivered: rolling it forward one
+// day at a time would replay every missed day as a back-dated brief, one per tick.
+export const STALE_MS = 3 * 60 * 60 * 1000;
+
 export type DispatchUserResult = {
   email: string;
   claimed: boolean;
@@ -44,7 +49,7 @@ export type DispatchResult = {
   durationMs: number;
 };
 
-type DueUser = {
+export type DueUser = {
   userId: string;
   email: string;
   dueRunAt: Date;
@@ -52,6 +57,20 @@ type DueUser = {
   deliveryMinute: number;
   timezone: string;
 };
+
+/**
+ * What to do with a due slot: deliver it and move to the slot after it, or — if it
+ * is stale — skip it and jump to the next slot after `now`. Exported for tests.
+ */
+export function planSlot(user: DueUser, now: Date): { deliver: boolean; nextRunAt: Date } {
+  const { deliveryHour, deliveryMinute, timezone, dueRunAt } = user;
+  if (dueRunAt.getTime() < now.getTime() - STALE_MS) {
+    return { deliver: false, nextRunAt: computeNextRunAt(deliveryHour, deliveryMinute, timezone, now) };
+  }
+  // The slot after this one — computed from the slot itself, not from `now`, because
+  // with lead time the current slot may still be in the future.
+  return { deliver: true, nextRunAt: computeNextRunAt(deliveryHour, deliveryMinute, timezone, dueRunAt) };
+}
 
 async function fetchDueUsers(horizon: Date): Promise<DueUser[]> {
   const rows = await db
@@ -108,18 +127,18 @@ export async function runDispatch(opts: { now?: Date; leadMs?: number } = {}): P
   const processed: DispatchUserResult[] = [];
 
   for (const user of dueUsers) {
-    // The slot after this one — computed from the slot itself, not from `now`, because
-    // with lead time the current slot may still be in the future.
-    const nextRunAt = computeNextRunAt(user.deliveryHour, user.deliveryMinute, user.timezone, user.dueRunAt);
+    const { deliver, nextRunAt } = planSlot(user, now);
 
-    const enqueued = await enqueueJob({ kind: "generate", userId: user.userId, scheduledFor: user.dueRunAt, runAfter: now });
+    const enqueued = deliver
+      ? await enqueueJob({ kind: "generate", userId: user.userId, scheduledFor: user.dueRunAt, runAfter: now })
+      : false;
     const claimed = await claimDueRun(user.userId, user.dueRunAt, nextRunAt);
-    processed.push({
-      email: user.email,
-      claimed,
-      enqueued,
-      ...(claimed ? {} : { note: "slot already claimed by a concurrent dispatch" }),
-    });
+    const note = !claimed
+      ? "slot already claimed by a concurrent dispatch"
+      : deliver
+        ? undefined
+        : `missed slot skipped; next run ${nextRunAt.toISOString()}`;
+    processed.push({ email: user.email, claimed, enqueued, ...(note ? { note } : {}) });
   }
 
   return { due: dueUsers.length, processed, runnableJobs: await runnableJobCount(), durationMs: Date.now() - startedAt };

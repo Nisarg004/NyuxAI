@@ -6,6 +6,9 @@ import { generateToken, hashToken } from "./tokens";
 
 const LINK_TTL_MS = 1000 * 60 * 30;
 const MAX_LINKS_PER_HOUR = 5;
+// The per-address limit stops one inbox being flooded; this one stops a single
+// caller spraying links across many addresses (and our sending reputation).
+const MAX_LINKS_PER_IP_PER_HOUR = 10;
 
 export type MagicLinkOutcome = "sent" | "rate_limited" | "no_account";
 
@@ -24,13 +27,24 @@ async function sendEmail(to: string, link: string): Promise<void> {
   if (error) throw new Error(`Failed to send sign-in email: ${error.message}`);
 }
 
+export async function isIpRateLimited(ipHash: string): Promise<boolean> {
+  const hourAgo = new Date(Date.now() - 1000 * 60 * 60);
+  const [{ count }] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(authTokens)
+    .where(and(eq(authTokens.ipHash, ipHash), gt(authTokens.createdAt, hourAgo)));
+  return count >= MAX_LINKS_PER_IP_PER_HOUR;
+}
+
 // Issues a one-time sign-in link. `requireAccount` is true for the plain
 // sign-in form (don't mint links for emails that never signed up) and false
 // right after onboarding, which has just created the account.
 export async function requestMagicLink(
   email: string,
-  opts: { requireAccount: boolean },
+  opts: { requireAccount: boolean; ipHash: string },
 ): Promise<MagicLinkOutcome> {
+  if (await isIpRateLimited(opts.ipHash)) return "rate_limited";
+
   if (opts.requireAccount) {
     const [user] = await db.select({ id: users.id }).from(users).where(eq(users.email, email));
     if (!user) return "no_account";
@@ -47,6 +61,7 @@ export async function requestMagicLink(
   await db.insert(authTokens).values({
     tokenHash: hashToken(token),
     email,
+    ipHash: opts.ipHash,
     expiresAt: new Date(Date.now() + LINK_TTL_MS),
   });
 

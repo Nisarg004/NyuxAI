@@ -31,6 +31,8 @@ export type DigestEmailProps = {
   archiveUrl: string;
   preferencesUrl: string;
   unsubscribeUrl: string;
+  // CAN-SPAM: a physical postal address in every email; omitted when unset.
+  postalAddress?: string | null;
 };
 
 function SectorTag({ label }: { label: string }) {
@@ -65,6 +67,7 @@ export function DigestEmail({
   archiveUrl,
   preferencesUrl,
   unsubscribeUrl,
+  postalAddress,
 }: DigestEmailProps) {
   return (
     <Html>
@@ -233,6 +236,9 @@ export function DigestEmail({
                 Unsubscribe
               </Link>
             </Text>
+            {postalAddress ? (
+              <Text style={{ fontFamily: SANS, fontSize: "11px", color: SLATE, margin: "0 0 8px 0" }}>{postalAddress}</Text>
+            ) : null}
             <Text style={{ fontFamily: MONO, fontSize: "11px", color: "#9AA0B4", margin: 0 }}>BRIEFF</Text>
           </Section>
         </Container>

@@ -1,11 +1,10 @@
-import { createHash } from "node:crypto";
 import { and, eq, gte } from "drizzle-orm";
 import { db } from "./db";
 import { landingRuns } from "./db/schema";
+import { hashIp } from "./client-ip";
 
 export const LANDING_HOURLY_LIMIT = 5;
 const WINDOW_MS = 60 * 60 * 1000;
-const SALT_FALLBACK = "brieff-landing-rate-limit";
 
 /**
  * Pure decision: given the timestamps of this IP's landing runs inside the
@@ -22,11 +21,6 @@ export function decideLandingRun(
   const msUntilFree = WINDOW_MS - (now.getTime() - oldest.getTime());
   const retryAfterMinutes = Math.max(1, Math.ceil(msUntilFree / 60_000));
   return { ok: false, retryAfterMinutes };
-}
-
-function hashIp(ip: string): string {
-  const salt = process.env.CRON_SECRET ?? SALT_FALLBACK;
-  return createHash("sha256").update(`${ip}:${salt}`).digest("hex");
 }
 
 /**

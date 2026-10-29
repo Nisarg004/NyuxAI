@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Fraunces, Hanken_Grotesk } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
@@ -27,6 +28,17 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="en" className={`${display.variable} ${sans.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col bg-paper font-sans text-ink">
         {children}
+        <footer className="mx-auto w-full max-w-2xl border-t border-rule px-6 py-6 text-xs text-ink-soft">
+          <nav className="flex items-center gap-4">
+            <Link href="/privacy" className="hover:text-editor">
+              Privacy
+            </Link>
+            <Link href="/terms" className="hover:text-editor">
+              Terms
+            </Link>
+            <span className="ml-auto">&copy; 2026 Brieff</span>
+          </nav>
+        </footer>
         <Toaster />
       </body>
     </html>

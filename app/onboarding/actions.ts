@@ -1,11 +1,13 @@
 "use server";
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { preferences, users } from "@/lib/db/schema";
 import { computeNextRunAt, safeTimezone } from "@/lib/schedule";
-import { requestMagicLink } from "@/lib/auth/magic-link";
+import { isIpRateLimited, requestMagicLink } from "@/lib/auth/magic-link";
+import { clientIp, hashIp } from "@/lib/client-ip";
 import { SECTORS } from "@/lib/sectors";
 
 export async function submitOnboarding(formData: FormData) {
@@ -19,6 +21,10 @@ export async function submitOnboarding(formData: FormData) {
   if (!email || !name) {
     throw new Error("Email and name are required");
   }
+
+  // Checked before any row is written, so a sprayer can't fill the users table either.
+  const ipHash = hashIp(clientIp(await headers()));
+  if (await isIpRateLimited(ipHash)) redirect("/signin?error=rate");
 
   const [existing] = await db.select().from(users).where(eq(users.email, email));
 
@@ -53,6 +59,6 @@ export async function submitOnboarding(formData: FormData) {
     await db.insert(preferences).values(values).onConflictDoUpdate({ target: preferences.userId, set: values });
   }
 
-  const outcome = await requestMagicLink(email, { requireAccount: false });
+  const outcome = await requestMagicLink(email, { requireAccount: false, ipHash });
   redirect(outcome === "rate_limited" ? "/signin?error=rate" : "/signin?sent=1");
 }

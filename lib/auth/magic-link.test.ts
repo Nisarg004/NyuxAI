@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { authTokens, users } from "@/lib/db/schema";
-import { consumeMagicLink, requestMagicLink } from "@/lib/auth/magic-link";
+import { consumeMagicLink, isIpRateLimited, requestMagicLink } from "@/lib/auth/magic-link";
 import { generateToken, hashToken } from "@/lib/auth/tokens";
 
 after(async () => {
@@ -56,14 +56,30 @@ test("an expired or unknown token is rejected", async () => {
 });
 
 test("requestMagicLink refuses unknown emails and rate-limits repeat requests before sending anything", async () => {
-  assert.equal(await requestMagicLink("nobody+none@brieff.invalid", { requireAccount: true }), "no_account");
+  const ipHash = `test-ip-${Date.now()}`;
+  assert.equal(await requestMagicLink("nobody+none@brieff.invalid", { requireAccount: true, ipHash }), "no_account");
 
   const user = await makeUser();
   try {
     for (let i = 0; i < 5; i++) await makeToken(user.email);
-    assert.equal(await requestMagicLink(user.email, { requireAccount: true }), "rate_limited");
+    assert.equal(await requestMagicLink(user.email, { requireAccount: true, ipHash }), "rate_limited");
   } finally {
     await db.delete(authTokens).where(eq(authTokens.email, user.email));
     await db.delete(users).where(eq(users.id, user.id));
+  }
+});
+
+test("requestMagicLink rate-limits one IP spraying links across many addresses", async () => {
+  const ipHash = `test-spray-${Date.now()}`;
+  const email = (i: number) => `spray-${i}-${ipHash}@brieff.invalid`;
+  try {
+    for (let i = 0; i < 10; i++) {
+      assert.equal(await requestMagicLink(email(i), { requireAccount: false, ipHash }), "sent");
+    }
+    assert.equal(await isIpRateLimited(ipHash), true);
+    assert.equal(await requestMagicLink(email(10), { requireAccount: false, ipHash }), "rate_limited");
+    assert.equal(await isIpRateLimited(`${ipHash}-other`), false);
+  } finally {
+    await db.delete(authTokens).where(eq(authTokens.ipHash, ipHash));
   }
 });

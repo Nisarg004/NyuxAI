@@ -25,7 +25,10 @@ export async function updatePreferences(formData: FormData) {
 
   await db
     .update(preferences)
-    .set({ sectors, deliveryHour, deliveryMinute, timezone, nextRunAt })
+    // Saving is an explicit, signed-in choice to receive briefs, so it also resumes
+    // a reader who unsubscribed. A bounced/complained address stays suppressed
+    // (users.email_status), which this doesn't touch.
+    .set({ sectors, deliveryHour, deliveryMinute, timezone, nextRunAt, isActive: true })
     .where(eq(preferences.userId, userId));
 
   revalidatePath("/dashboard");

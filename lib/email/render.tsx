@@ -12,6 +12,7 @@ export async function renderDigestEmail(props: {
   archiveUrl: string;
   preferencesUrl: string;
   unsubscribeUrl: string;
+  postalAddress?: string | null;
 }): Promise<{ html: string; subject: string }> {
   const local = DateTime.fromJSDate(props.sentAt, { zone: props.timezone });
   const dateLabel = local.toFormat("ccc d LLL yyyy").toUpperCase();
@@ -27,6 +28,7 @@ export async function renderDigestEmail(props: {
     archiveUrl: props.archiveUrl,
     preferencesUrl: props.preferencesUrl,
     unsubscribeUrl: props.unsubscribeUrl,
+    postalAddress: props.postalAddress,
   };
 
   const html = await render(<DigestEmail {...emailProps} />);

@@ -14,6 +14,7 @@ export function PreferencesCard(props: {
   deliveryMinute: number;
   timezone: string;
   depth: string;
+  isActive: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [sectors, setSectors] = useState(props.sectors);
@@ -40,6 +41,11 @@ export function PreferencesCard(props: {
           {formatSectorList(SECTORS.filter((s) => props.sectors.includes(s)))} desks, at{" "}
           {currentTime} your time. <span className="capitalize">{props.depth}</span> depth.
         </p>
+        {!props.isActive && (
+          <p className="mt-2 text-sm text-editor">
+            Paused: you unsubscribed, so no briefs are being sent. Edit and save to resume.
+          </p>
+        )}
       </section>
     );
   }

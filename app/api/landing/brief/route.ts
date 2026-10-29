@@ -1,4 +1,5 @@
 import { generateBrief } from "@/lib/agents/pipeline";
+import { clientIp } from "@/lib/client-ip";
 import { checkAndRecordLandingRun } from "@/lib/rate-limit";
 import { SECTORS } from "@/lib/sectors";
 
@@ -16,12 +17,6 @@ const LANDING_CANDIDATE_LIMIT = 45;
 const MAX_SECTORS = 3;
 const MAX_ITEMS_PER_SECTOR = 3;
 const MAX_ROLE_LEN = 120;
-
-function clientIp(request: Request): string {
-  const fwd = request.headers.get("x-forwarded-for");
-  if (fwd) return fwd.split(",")[0].trim();
-  return request.headers.get("x-real-ip")?.trim() || "unknown";
-}
 
 export async function POST(request: Request) {
   let body: { sectors?: unknown; roleTitle?: unknown };
@@ -43,7 +38,7 @@ export async function POST(request: Request) {
   const roleRaw = typeof body.roleTitle === "string" ? body.roleTitle.trim().slice(0, MAX_ROLE_LEN) : "";
   const roleTitle = roleRaw.length > 0 ? roleRaw : null;
 
-  const gate = await checkAndRecordLandingRun(clientIp(request));
+  const gate = await checkAndRecordLandingRun(clientIp(request.headers));
   if (!gate.ok) {
     return Response.json({ error: "rate_limited", retryAfterMinutes: gate.retryAfterMinutes }, { status: 429 });
   }

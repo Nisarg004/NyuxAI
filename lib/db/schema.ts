@@ -66,11 +66,16 @@ export const authTokens = pgTable(
   {
     tokenHash: text("token_hash").primaryKey(),
     email: text("email").notNull(),
+    // Hashed requester IP, for the per-IP sign-in email limit (lib/auth/magic-link.ts).
+    ipHash: text("ip_hash"),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     usedAt: timestamp("used_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("auth_tokens_email_created_at_idx").on(t.email, t.createdAt)],
+  (t) => [
+    index("auth_tokens_email_created_at_idx").on(t.email, t.createdAt),
+    index("auth_tokens_ip_hash_created_at_idx").on(t.ipHash, t.createdAt),
+  ],
 );
 
 export const preferences = pgTable("preferences", {

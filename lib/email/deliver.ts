@@ -2,6 +2,7 @@ import { asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { digestItems, digests, preferences, users } from "@/lib/db/schema";
 import { getInternalBaseUrl } from "@/lib/internal-api";
+import { POSTAL_ADDRESS } from "@/lib/legal";
 import { unsubscribeHeaders, unsubscribePageUrl } from "@/lib/unsubscribe";
 import type { DigestEmailItem, DigestEmailSector } from "./digest-email";
 import { renderDigestEmail } from "./render";
@@ -63,6 +64,7 @@ export async function deliverDigest(digestId: string): Promise<DeliverResult> {
     archiveUrl: `${appUrl}/archive/${digestId}`,
     preferencesUrl: `${appUrl}/dashboard`,
     unsubscribeUrl: unsubscribePageUrl(user.id),
+    postalAddress: POSTAL_ADDRESS,
   });
 
   const sendResult = await sendEmail({ to: user.email, subject, html, headers: unsubscribeHeaders(user.id) });

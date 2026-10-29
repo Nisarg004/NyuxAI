@@ -77,6 +77,7 @@ export default async function DashboardPage() {
               deliveryMinute={preferences.deliveryMinute}
               timezone={preferences.timezone}
               depth={preferences.depth}
+              isActive={preferences.isActive}
             />
           </div>
 

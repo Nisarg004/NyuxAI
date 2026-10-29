@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { submitOnboarding } from "./actions";
 import { SectorPicker } from "@/components/onboarding/sector-picker";
 import { TimezoneField } from "@/components/onboarding/timezone-field";
@@ -65,6 +66,17 @@ export default async function OnboardingPage({
         <Button type="submit" className="w-full rounded-[3px] bg-ink text-paper hover:bg-editor">
           Start my briefing
         </Button>
+        <p className="text-center text-xs text-ink-soft">
+          By continuing you agree to the{" "}
+          <Link href="/terms" className="underline hover:text-editor">
+            Terms
+          </Link>{" "}
+          and{" "}
+          <Link href="/privacy" className="underline hover:text-editor">
+            Privacy policy
+          </Link>
+          .
+        </p>
       </form>
     </main>
   );

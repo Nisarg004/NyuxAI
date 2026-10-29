@@ -47,3 +47,13 @@ next-env.d.ts
 
 # playwright mcp scratch
 .playwright-mcp/
+
+# keep private/local material out of the public repo
+files/
+docs/
+.superpowers/
+.claude/
+.vercel/
+tsconfig.tsbuildinfo
+scripts/_tmp-*
+.DS_Store

@@ -139,10 +139,14 @@ export function WireCanvas({ className }: { className?: string }) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, width, height);
 
+      // Placed against the visible screen, not the canvas: the hero section can be
+      // taller than the viewport. On narrow screens the scene owns the band between
+      // the header (~76px) and the headline, which starts 42svh below it.
       const mobile = width < 768;
+      const vh = Math.min(height, window.innerHeight);
       const cx = mobile ? width * 0.5 : width * 0.755;
-      const cy = mobile ? height * 0.24 : height * 0.52;
-      const scale = mobile ? Math.min(width * 0.36, height * 0.17) : Math.min(width * 0.2, height * 0.34);
+      const cy = mobile ? 76 + vh * 0.2 : vh * 0.52;
+      const scale = mobile ? Math.min(width * 0.36, vh * 0.19) : Math.min(width * 0.2, vh * 0.34);
       const focal = 3.2;
 
       // The brief sheet: a plane facing the viewer, tilted by the pointer.

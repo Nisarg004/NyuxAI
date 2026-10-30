@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Bricolage_Grotesque, Geist } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import { Toaster } from "@/components/ui/sonner";
 import { Logo } from "@/components/brand/logo";
+import { SITE_URL } from "@/lib/site-url";
 import "./globals.css";
 
 // The voice: headlines and the wordmark.
@@ -19,6 +21,7 @@ const sans = Geist({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: "Nyux: the news that matters to your work",
   description:
     "Nyux reads hundreds of stories a day, checks every claim against its source, and sends you the few that matter to your job.",
@@ -47,6 +50,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           </div>
         </footer>
         <Toaster />
+        <Analytics />
       </body>
     </html>
   );

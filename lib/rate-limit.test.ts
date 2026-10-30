@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { decideLandingRun, LANDING_HOURLY_LIMIT } from "./rate-limit";
+import { decideLandingMode, decideLandingRun, LANDING_HOURLY_LIMIT } from "./rate-limit";
 
 const now = new Date("2026-09-06T12:00:00.000Z");
 
@@ -34,4 +34,18 @@ test("retryAfterMinutes is at least 1 even when the oldest is almost 60 minutes 
   assert.equal(result.ok, false);
   if (result.ok) return;
   assert.equal(result.retryAfterMinutes, 1);
+});
+
+test("a visitor with a role gets the role-tuned sample while under the daily cap", () => {
+  assert.equal(decideLandingMode(true, 0, 150), "role");
+  assert.equal(decideLandingMode(true, 149, 150), "role");
+});
+
+test("past the daily cap a role visitor falls back to the free sector edition", () => {
+  assert.equal(decideLandingMode(true, 150, 150), "sectors");
+  assert.equal(decideLandingMode(true, 400, 150), "sectors");
+});
+
+test("a visitor without a role always gets the sector edition", () => {
+  assert.equal(decideLandingMode(false, 0, 150), "sectors");
 });

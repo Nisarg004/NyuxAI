@@ -1,6 +1,7 @@
 "use server";
 
 import { headers } from "next/headers";
+import { track } from "@vercel/analytics/server";
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
@@ -60,5 +61,8 @@ export async function submitOnboarding(formData: FormData) {
   }
 
   const outcome = await requestMagicLink(email, { requireAccount: false, ipHash });
+  await track("signup_submitted", { role: Boolean(roleTitle), desks: sectors.length, outcome }).catch((error: unknown) =>
+    console.error("[analytics] signup_submitted not recorded", error),
+  );
   redirect(outcome === "rate_limited" ? "/signin?error=rate" : "/signin?sent=1");
 }

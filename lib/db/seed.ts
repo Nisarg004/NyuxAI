@@ -2,6 +2,8 @@ import { db } from "./index";
 import { sources } from "./schema";
 import { seedSources } from "./candidate-sources";
 
+// Fresh databases only: deleting sources cascades to every article. For a live
+// database use `npm run db:sync-sources`, which adds and switches off instead.
 async function main() {
   await db.delete(sources);
 

@@ -58,6 +58,11 @@ export default function PrivacyPage() {
                 advertising or tracking cookies.
               </li>
               <li>
+                Anonymous visit counts (pages viewed, and whether a sample
+                brief or sign-up was started), through Vercel Web Analytics.
+                It sets no cookies and doesn&rsquo;t identify you.
+              </li>
+              <li>
                 Hashed IP addresses, used only to rate-limit sign-in links and
                 the free sample brief. We don&rsquo;t store your raw IP address.
               </li>

@@ -1,6 +1,6 @@
 import { generateBrief } from "@/lib/agents/pipeline";
 import { clientIp } from "@/lib/client-ip";
-import { checkAndRecordLandingRun } from "@/lib/rate-limit";
+import { checkAndRecordLandingRun, landingModeFor } from "@/lib/rate-limit";
 import { SECTORS } from "@/lib/sectors";
 
 /**
@@ -43,6 +43,11 @@ export async function POST(request: Request) {
     return Response.json({ error: "rate_limited", retryAfterMinutes: gate.retryAfterMinutes }, { status: 429 });
   }
 
+  // Over the daily budget for role-tuned samples, the role is dropped and the visitor
+  // reads the shared sector edition instead (see LANDING_DAILY_ROLE_LIMIT).
+  const mode = await landingModeFor(roleTitle !== null);
+  if (roleTitle && mode === "sectors") console.warn("[landing] daily role-sample cap reached; serving sector edition");
+
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
@@ -54,7 +59,7 @@ export async function POST(request: Request) {
         const result = await generateBrief(
           {
             // A stranger who gave no role gets the shared sector editions: free once built.
-            mode: roleTitle ? "role" : "sectors",
+            mode,
             userName: "there",
             roleTitle,
             sectors,

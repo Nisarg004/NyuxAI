@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { track } from "@vercel/analytics";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -11,6 +12,7 @@ export function EmailCapture({ sectors, roleTitle }: { sectors: string[]; roleTi
 
   const go = (e: React.FormEvent) => {
     e.preventDefault();
+    track("signup_from_demo");
     const params = new URLSearchParams();
     if (email.trim()) params.set("email", email.trim());
     if (roleTitle.trim()) params.set("role", roleTitle.trim());

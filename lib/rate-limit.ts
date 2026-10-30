@@ -1,6 +1,6 @@
-import { and, eq, gte } from "drizzle-orm";
+import { and, eq, gt, gte, sql } from "drizzle-orm";
 import { db } from "./db";
-import { landingRuns } from "./db/schema";
+import { landingRuns, runs } from "./db/schema";
 import { hashIp } from "./client-ip";
 
 export const LANDING_HOURLY_LIMIT = 5;
@@ -48,4 +48,29 @@ export async function checkAndRecordLandingRun(
 
   await db.insert(landingRuns).values({ ipHash });
   return { ok: true };
+}
+
+// Role-tuned sample briefs are the only landing runs that cost real tokens (~20k each);
+// sector-only samples read shared editions and cost ~nothing. Past this many costly
+// samples in 24h, a visitor who typed a role gets the free sector edition instead of
+// being refused, so a traffic spike can't run up the bill. Override with an env var.
+export const LANDING_DAILY_ROLE_LIMIT = Number(process.env.LANDING_DAILY_ROLE_LIMIT) || 150;
+const COSTLY_RUN_TOKENS = 1000;
+
+export function decideLandingMode(
+  wantsRole: boolean,
+  costlyRunsToday: number,
+  limit: number = LANDING_DAILY_ROLE_LIMIT,
+): "role" | "sectors" {
+  return wantsRole && costlyRunsToday < limit ? "role" : "sectors";
+}
+
+export async function landingModeFor(wantsRole: boolean): Promise<"role" | "sectors"> {
+  if (!wantsRole) return "sectors";
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const [{ count }] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(runs)
+    .where(and(eq(runs.kind, "landing"), gt(runs.startedAt, since), sql`${runs.tokenCost} > ${COSTLY_RUN_TOKENS}`));
+  return decideLandingMode(true, count);
 }

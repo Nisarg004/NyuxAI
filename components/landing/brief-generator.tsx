@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { track } from "@vercel/analytics";
 import Link from "next/link";
 import { SECTORS } from "@/lib/sectors";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,19 @@ export function BriefGenerator() {
   };
 
   const running = status === "running";
+
+  // The demo funnel: how many visitors build a sample, and how many get one back.
+  useEffect(() => {
+    if (status === "done") track("demo_completed", { desks: selected.length, role: role.trim().length > 0 });
+    if (status === "error") track("demo_failed", { rateLimited: Boolean(rateLimit) });
+    // Only on status changes; the selections are read as they were when it finished.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
+
+  const build = () => {
+    track("demo_started", { desks: selected.length, role: role.trim().length > 0 });
+    start({ sectors: selected, roleTitle: role });
+  };
   const atCap = selected.length >= MAX_SECTORS;
 
   return (
@@ -71,7 +85,7 @@ export function BriefGenerator() {
       <p className="mt-2 text-sm text-haze">With a role, each story says why it matters to your job.</p>
 
       <Button
-        onClick={() => start({ sectors: selected, roleTitle: role })}
+        onClick={build}
         disabled={running || selected.length === 0}
         size="lg"
         className="mt-7"
@@ -97,7 +111,7 @@ export function BriefGenerator() {
         <div role="alert" className="mt-6 rounded-[14px] border border-alarm/40 bg-alarm/10 p-4 text-[0.975rem] leading-[1.6] text-star">
           <p>{error ?? "The brief couldn't be built just now. Try again in a moment."}</p>
           <Button
-            onClick={() => start({ sectors: selected, roleTitle: role })}
+            onClick={build}
             disabled={selected.length === 0}
             variant="outline"
             className="mt-3"
